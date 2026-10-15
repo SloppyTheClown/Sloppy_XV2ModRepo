@@ -1,4 +1,6 @@
-# Sloppy XV2 Mod Repo
+# Sloppy_XV2ModRepo
+
+A collection of primarily slop-coded mods for Xenoverse 2 I made for myself mostly.
 
 Mods for Dragon Ball Xenoverse 2 (game version 1.26.01), built around a small
 mod loader. Each folder is its own project with a README that explains what
