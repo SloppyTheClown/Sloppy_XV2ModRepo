@@ -1,10 +1,12 @@
 # Sloppy_XV2ModRepo
 
-A collection of primarily slop-coded mods for Xenoverse 2 I made for myself mostly.
+A collection of primarily slop-coded mods for Xenoverse 2 I made for myself mostly. It's made to work alongside XV2PATCHER.
 
 Mods for Dragon Ball Xenoverse 2 (game version 1.26.01), built around a small
 mod loader. Each folder is its own project with a README that explains what
 it does and how to install it.
+
+Tested primarily with 1.26.01 game, 4.7 XV2Patcher, 5.1.1 Revamp.
 
 ## Installing
 
@@ -39,7 +41,12 @@ release packages are named `<Mod>-<version>.zip`.
 Public domain ([The Unlicense](LICENSE)): use any of it for anything.
 Bundled third-party code keeps its own licence (listed in [LICENSE](LICENSE)).
 
+Feel free to do whatever you want with this without giving me credit. In fact, DO NOT give me any credit. I make real code, and this is not that and is just kind of for funsies.
+
 ## Credits
 
 Each mod's README lists the tools, libraries, references and community work
 it builds on.
+
+## As always though, none of this would be possible without REAL reverse engineers so please direct all credit and support to the true heroes like ETERNITY without which none of this would be possible.
+## And remember that AI is completely useless without code generated my HUMANS to train on.
