@@ -1,0 +1,1 @@
+Dear ImGui 1.92.4 (https://github.com/ocornut/imgui, tag v1.92.4): the core files, imstb_*.h and backends/imgui_impl_dx11.*. MIT licence - see LICENSE.txt.

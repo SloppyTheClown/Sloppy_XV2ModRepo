@@ -1,0 +1,17 @@
+# Private working notes (handoffs between sessions) - never published
+NEXT_STEPS*.md
+
+# Visual Studio / CMake build output
+build/
+out/
+.vs/
+*.user
+CMakeSettings.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Runtime logs and editor backups
+*.log
+*.bak

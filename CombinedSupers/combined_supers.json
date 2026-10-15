@@ -1,0 +1,25 @@
+{
+  "enabled": true,
+
+  "stats": "additive",
+  "weight": "highest",
+  "height": "highest",
+
+  "share": 1.0,
+  "soft_cap_points": 200,
+  "falloff": 0.35,
+
+  "logging": false,
+
+  "_options": "stats, weight and height each accept: additive, highest, or vanilla. vanilla turns that option off.",
+  "_stats": "Your Strike Supers and Ki Blast Supers investment, gear included. additive = each stat also gets the other's. highest = both stats use whichever of the two is better.",
+  "_weight": "Your Weight body type. highest = every character gets the best Weight tier on both stats, so Weight no longer decides your damage. additive behaves the same here.",
+  "_height": "Your Height body type. highest = every character gets the best Height tier's health, up to about 7 percent more, added on top of their own. Speed is not changed.",
+  "_share": "How much of the other stat is handed across. 1.0 = all of it, 0.5 = half, 0 = none. Applies to stats; weight and height are all-or-nothing.",
+  "_soft_cap_points": "Diminishing returns begin once a stat's combined total passes this many attribute points. 200 is the most the game lets you invest in a single stat.",
+  "_falloff": "How much of everything past the soft cap still counts. 0 = hard cap, 1 = no diminishing returns.",
+  "_logging": "true writes combined_supers.log and combined_supers_status.txt into this folder. Off by default.",
+  "_buffs": "Transformations and super souls are never combined. A +20 percent super soul stays +20 percent.",
+  "_negative": "Negative gear counts like the game counts it. With additive stats a penalty is shared across too, so one stat can end up slightly below vanilla.",
+  "_multiplayer": "Everyone playing together should use the same config file, or you will disagree about damage."
+}

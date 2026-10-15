@@ -1,0 +1,9 @@
+# Visual Studio / CMake
+.vs/
+out/
+build/
+CMakeSettings.json
+*.user
+
+# runtime
+*.log

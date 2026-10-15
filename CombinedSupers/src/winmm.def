@@ -1,0 +1,2 @@
+LIBRARY winmm
+; exports are forwarders, declared in winmm_exports.h

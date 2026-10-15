@@ -1,0 +1,51 @@
+{
+    "enabled": true,
+
+    "unlock_teleports": false,
+    "unlock_flight": true,
+    "lobby_flight_speed": 2.5,
+    "clear_story_flags": false,
+    "unlock_all_parallel_quests": true,
+    "unlock_all_expert_missions": true,
+    "unlock_level_cap": true,
+    "tp_shop_all_seasons": true,
+    "mentor_names_on_map": true,
+    "reveal_hidden_conditions": false,
+    "raid_characters": false,
+    "wait_for_all_ready": true,
+    "wait_for_all_ready_raid": false,
+    "transform_hud_next_stage": true,
+    "all_dragon_balls": false,
+    "skip_logos": true,
+    "skip_intro": false,
+    "title_volume": true,
+    "automatic_flag_fixer": true,
+    "camera_zoom": {
+        "enabled": true,
+        "zoom_in_keys": ["+", "num+"],
+        "zoom_out_keys": ["-", "num-"],
+        "reset_keys": ["backspace"],
+        "speed": 1.8,
+        "min": 0.5,
+        "max": 4.0
+    },
+
+    "replay_npc": {
+        "enabled": true,
+        "model": "STN",
+        "costume": 0,
+        "idle_action": 140,
+        "talk_motion": "Mot_Stand",
+        "name": "DLC Master",
+        "greeting": "Hey there, champ! Want to relive one of the big adventures? The World Champion remembers every single one!",
+        "option": "Relive an adventure",
+        "menu_line": "Pick any one you like! I was there for all of them, of course!",
+        "farewell_go": "Go get 'em! Make the World Champion proud!",
+        "farewell_stay": "No problem! The champ will be right here whenever you need him!",
+        "menu_title": "DLC Adventures",
+        "talk_voice": "BDQR_MST_000",
+        "hide_npcs": [987, 85, 86]
+    },
+
+    "logging": false
+}

@@ -1,0 +1,7 @@
+{
+  "logging": false,
+  "lua_console": false,
+
+  "_logging": "true writes loader.log into this folder, listing every mod DLL loaded (or not).",
+  "_lua_console": "true opens a console window showing what Lua scripts print (mods\\<Mod>\\*.lua). In the game, F1 reloads all scripts and F2 hides/shows the console."
+}

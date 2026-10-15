@@ -1,0 +1,15 @@
+{
+    "enabled": true,
+    "logging": false,
+
+    "styles": "roster",
+    "exclude_styles": ["fake", "giants"],
+    "style_search": true,
+
+    "style_names": {
+        "MAP": "Majin (Purification)",
+        "D00": "D00 (Revamp)",
+        "D01": "D01 (Revamp)",
+        "D02": "D02 (Revamp)"
+    }
+}

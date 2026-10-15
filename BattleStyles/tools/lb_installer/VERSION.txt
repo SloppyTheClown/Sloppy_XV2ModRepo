@@ -1,0 +1,5 @@
+LB Mod Installer 3.32.0.0 by LazyBone152 (MIT licence, LICENSE.txt)
+Source: https://github.com/LazyBone152/XV2-Tools (LB Mod Installer)
+This copy: the installer exe shipped with New Transformations 3.4.5, unchanged
+(SHA256 9BA50CE71A9B58F95585BC6CB1208C596D9EA79749E71AFB3703647A5FFEC22C).
+Used by moveset_to_style.py for mods that bring no installer of their own.
