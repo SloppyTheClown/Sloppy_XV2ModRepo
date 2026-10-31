@@ -85,7 +85,7 @@ To remove it, delete the `General_QoL` folder.
 | `unlock_all_parallel_quests` | `true` | parallel quests do not wait for other parallel quests |
 | `unlock_all_expert_missions` | `true` | expert missions do not wait for other expert missions |
 | `unlock_level_cap` | `true` | maximum level 199 from the start (whole save file) |
-| `tp_shop_all_seasons` | `true` | the TP medal shop sells every seasonal item all year |
+| `tp_shop_all_seasons` | `true` | the TP medal shop sells seasonal items all year (known issue: some seasonal items are still missing from the shop) |
 | `mentor_names_on_map` | `true` | the Conton City map shows the names of the mentors you have discovered next to their icons |
 | `free_attribute_points` | `true` | confirmed attribute points can be moved again in the Attributes menu |
 | `reveal_hidden_conditions` | `false` | parallel quest details show every condition instead of "???" |

@@ -2,7 +2,7 @@
 
 The version is in `VERSION`; it goes up with every release.
 
-## 0.1.0 - 2026-10-31
+## 1.0.0 - 2026-10-31
 
 * First release, for game version 1.27. Needs XV2 Mod Loader 1.1.0 or newer.
 * Equip screen: the cloth tab's Accessory row has two more columns (left /

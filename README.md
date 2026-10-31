@@ -27,7 +27,7 @@ packages are on the [Releases](../../releases) page.
 | [Effect Texture Limit](EffectTextureLimit/README.md) | 1.1.1 | 1.27 | Effect texture files can hold 255 textures instead of 128 |
 | [General QoL](General_QoL/README.md) | 1.1.0 | 1.27 | Unlocks and quality-of-life changes, each switchable |
 | [Item Search](ItemSearch/README.md) | 1.1.0 | 1.27 | A search box over the item lists |
-| [Multi Accessory](MultiAccessory/README.md) | 0.1.0 | 1.27 | Up to two extra accessories per created character |
+| [Multi Accessory](MultiAccessory/README.md) | 1.0.0 | 1.27 | Up to two extra accessories per created character |
 | [SaveSync](SaveSync/README.md) | 1.1.0 | 1.27 | Shares unlock progress between your created characters |
 | [Training QoL](Training_QoL/README.md) | 1.1.0 | 1.27 | In Training, control the partner (D-pad up) or use the photo camera (D-pad down) |
 

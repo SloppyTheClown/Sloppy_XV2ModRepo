@@ -8,6 +8,10 @@ and you play it as if you had picked it. Press it again to go back to your
 own character. While you control the partner, your own character just
 stands still.
 
+Press **D-pad down** for the photo camera: the game's free camera from the
+online battle photo mode. Both characters hold still and the battle HUD is
+hidden; press it again to go back. Pausing also turns it off.
+
 Stats, teams and the partner's Training settings are not changed. It only
 works in offline Training and does nothing anywhere else.
 
@@ -28,6 +32,24 @@ DB Xenoverse 2\
 
 To remove it, delete the `Training_QoL` folder.
 
+### XV2Patcher-only version (no mod loader)
+
+The `Training_QoL_Epatch_<game version>-<version>.zip` downloads hold the
+same features as an XV2Patcher Epatch, for game 1.27, 1.26.01 or 1.25.02
+(Revamp's version) - pick the one for your game. Extract it into the game
+folder:
+
+```
+DB Xenoverse 2\
+    XV2PATCHER\
+        Epatches\
+            Training_QoL.xml
+```
+
+The buttons are fixed to D-pad up / down (no settings). Use either this or
+the mod loader version, not both. To remove it, delete
+`XV2PATCHER\Epatches\Training_QoL.xml`.
+
 ## Settings
 
 `training_qol.json`:
@@ -36,6 +58,9 @@ To remove it, delete the `Training_QoL` folder.
 |---|---|---|
 | `toggle_button` | `"dpad_up"` | Controller button that switches: `dpad_up`, `dpad_down`, `dpad_left`, `dpad_right`, `start`, `back`, `l3`, `r3`, `lb`, `rb`, `a`, `b`, `x`, `y`, or `""` for none |
 | `toggle_key` | `""` | Keyboard key that switches: `F1`..`F12`, a letter or a digit, or `""` for none |
+| `photo_button` | `"dpad_down"` | Controller button for the photo camera (same choices) |
+| `photo_key` | `""` | Keyboard key for the photo camera |
+| `photo_hide_hud` | `true` | `true` = hides the battle HUD while the photo camera is on |
 | `logging` | `false` | `true` = writes `Training_QoL.log` next to the DLL |
 
 Changing a Training setting while you control the partner switches you

@@ -1,6 +1,6 @@
 # Multi Accessory
 
-**Version 0.1.0** · for Dragon Ball Xenoverse 2 **1.27** · needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
+**Version 1.0.0** · for Dragon Ball Xenoverse 2 **1.27** · needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
 
 An XV2 Mod Loader mod that lets a created character (CaC) wear up to two
 extra accessories on top of the one equipped in the game, for example a hat

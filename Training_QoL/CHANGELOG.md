@@ -5,6 +5,8 @@ The version is in `VERSION`; it goes up with every release.
 ## 1.1.0 - 2026-10-31
 
 * For game version 1.27 (was 1.26.01). Needs XV2 Mod Loader 1.1.0 or newer.
+* New: an XV2Patcher-only version (Epatch, no mod loader) for game 1.27,
+  1.26.01 and 1.25.02.
 * The partner switch moves to **D-pad up** (`toggle_button`).
 * New: **D-pad down** (`photo_button` / `photo_key`) turns on the game's
   photo camera (the free camera of the online battle photo mode) and holds
