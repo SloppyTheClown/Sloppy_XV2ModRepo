@@ -11,8 +11,8 @@
 //   the Clown Nose accessory; costumes-and-models.md);
 // * the race's skeleton with the prop bones added under the same parents,
 //   with the style's rest transforms - the game builds the skeleton path from
-//   the BCS path ("<bcs minus .bcs>_000[_LOD01..03].esk", 0x298240,
-//   0x2987f0), so the fitted BCS brings its own skeleton; the fitted body EAN
+//   the BCS path ("<bcs minus .bcs>_000[_LOD01..03].esk", 0x298300,
+//   0x2988b0), so the fitted BCS brings its own skeleton; the fitted body EAN
 //   animates the bones (ean_fit.h);
 // * per (style part, group of prop bones joined by triangles): the part's EMD
 //   cut down to the triangles skinned mostly to those bones, moved into the
@@ -44,7 +44,9 @@ using ReadGameData = std::function<bool(const std::string& path, std::vector<uin
 // bones it animates become props) and `fittedBcsPath` where the fitted BCS goes
 // ("battle_styles/fit/HUM.WIS.bcs"; its skeletons go next to it).
 // `files` gets the fitted BCS first, then the skeletons and prop meshes.
-// False (files empty) when the style has no prop or a file isn't
+// Animated prop bones with no mesh skinned to them still give the race's BCS
+// and the skeletons with the bones (effects attach to them: Dark King Fu).
+// False (files empty) when the style has no prop bone or a file isn't
 // understood; `note` says what was done or why not.
 bool FitPropsToRace(const ReadGameData& read, const std::vector<uint8_t>& raceBcs, const std::string& raceBcsPath,
                     const std::string& styleBcsPath, const std::string& styleEanPath, const std::string& fittedBcsPath,

@@ -1,5 +1,7 @@
 # XV2 Mod Loader
 
+**Version 1.1.0** · for Dragon Ball Xenoverse 2 **1.27** (Steam)
+
 A small mod loader for Dragon Ball Xenoverse 2. It loads DLL mods and Lua
 scripts from their own folders instead of the game's `bin` folder, and comes
 with two launchers to switch between modded and unmodded play in one click.
@@ -25,6 +27,7 @@ DB Xenoverse 2\
         Lib\
             lua54.dll              <- Lua, for Lua scripts
             XV2ModLoaderLib.dll    <- in-game menu, search boxes, game file edits
+            XV2UserInterfaceLib.dll <- lets several mods edit the same menu
         mods\
             <ModName>\             <- one folder per mod
                 <ModName>.dll      <- and/or Lua scripts (*.lua), see below
@@ -153,10 +156,28 @@ Every script runs on its own: scripts don't share variables. `require("name")`
 loads `name.lua` from the mod's `io_packages` folder. Lua's `io` and `os`
 libraries are available.
 
-`sdk\modloader_lib.lua` describes every function of the `ui`, `search` and
-`files` tables (what it takes and returns). Add the `sdk` folder to your
+`sdk\modloader_lib.lua` describes every function of the `ui`, `search`,
+`files` and `uilib` tables (what it takes and returns). Add the `sdk` folder to your
 editor's Lua language server (`Lua.workspace.library`) to get them as
 completions and hints.
+
+### In-game menu and overlay
+
+```lua
+function _OnMenu()      -- draws this script's section of the ~ menu
+    if ui.Button("Heal") then ConsolePrint("healed", 1) end
+end
+
+function _OnOverlay()   -- windows over the game (menu open, or ui.ShowOverlay())
+    if ui.Begin("My window") then ui.Text("hello") end
+    ui.End()
+end
+```
+
+The `ui` table has text (plain, disabled, wrapped, coloured, outlined),
+buttons, checkboxes, sliders, number and text inputs, dropdowns, tree nodes,
+collapsing headers, tooltips and windows (Dear ImGui underneath). Each
+widget returns its new value; `sdk\modloader_lib.lua` lists them all.
 
 ### Memory functions
 
@@ -205,15 +226,47 @@ nothing here, and `SetHertz` has no effect: scripts always run once per frame.
 ### Game files
 
 A script can have the loader's library change a game file as the game reads it, so
-nothing in `data` has to be replaced. Game version 1.26.01 only.
+nothing in `data` has to be replaced. Game version 1.27 only.
 
 | function | |
 |---|---|
+| `files.ReplaceFile(path, file)` | serve the whole of `file` (relative to the mod's folder, read once when called, at most 512 MB) instead of the game file `path` (e.g. `"msg/proper_noun_en.msg"`). One mod per file: a second mod's replacement is refused. `true`, or `false` and the reason |
 | `files.ReplaceIggyScript(path, abcFile, vanillaSize, vanillaHash)` | swap the ActionScript of the menu `path` (e.g. `"ui/iggy/ITEMLIST.iggy"`) for the compiled ABC in `abcFile` (relative to the mod's folder). Only done when the menu's current script is the one given by its ABC size and FNV-1a 64 hash, so a menu another mod changed is left alone. `true`, or `false` and the reason |
-| `files.IggyScriptStatus(path)` | what happened when the game last read that menu (`"served: ..."`, `"NOT patched: ..."`), or `nil` |
+| `files.Status(path)` | what happened when the game last read that file (`"served: ..."`, `"NOT patched: ..."`), or `nil`; `files.IggyScriptStatus` is its old name |
+| `files.Owner(path)` / `files.Owners(path)` | the first mod changing that file (`nil` if none) / all of them, in order |
+| `files.Remove(path)` | drop this script's change of `path`; `false` if it had none |
+| `files.ReadGameFile(path)` | a game file's bytes as the game finds it (loose `data\` file first, then the `.cpk`s; other mods' changes not applied) and where it came from (`"loose"` or the cpk's name); `nil, "not found"` |
 
 Call `ReplaceIggyScript` in `_OnInit`: menus are read when they open. One
-script per menu; calling it again (or F1) replaces that script's entry.
+script per menu; calling it again (or F1) replaces that script's entry. To
+have several mods change one menu, use `uilib` below instead.
+
+### Menus and menu textures (several mods at once)
+
+`uilib` (from `Lib\XV2UserInterfaceLib.dll`; `nil` without it) lets any
+number of mods edit the same menu. Each mod ships its whole edited copy of
+the menu's ActionScript (the AS3 ABC, e.g. saved from FFDec); the library
+merges only what that mod changed into the menu as the mods before it left
+it, so every mod's edits apply. Changed and new methods, traits, classes and
+scripts are applied, removals are not. When two mods change the same method,
+the edits are merged if they don't overlap, otherwise the later mod's wins;
+`loader.log` lists each case. Texture files work the same way, one image at
+a time, and text (`.msg`) files one entry at a time.
+
+| function | |
+|---|---|
+| `uilib.EditScript(path, abcFile, baseFile, gameFile, order)` | register your edit of the script of the menu `path` (e.g. `"ui/iggy/CHARASELE.iggy"`). `abcFile`: your edited ABC, relative to the mod's folder. `baseFile` (optional): the script you edited, when it isn't the game's byte for byte (FFDec recompiles the classes it saves). `gameFile` (optional): the game script `baseFile` comes from, for a menu that comes in versions (XV2Patcher ships its own CHARASELE) - call once per version and the one matching the menu the game loads is used. `order` (optional, default 0): lower runs earlier. `true`, or `false` and the reason |
+| `uilib.SetImage(path, name, imageFile, order)` | replace one image of the `.iggytex` texture file `path` (e.g. `"ui/iggy/CMNTITLE_en.iggytex"`), or add it when missing. `name` is the texture id the menu uses (`14`); `imageFile` is a DDS, relative to the mod's folder. Other images of the file, and other mods' images, stay; the same image from two mods: the later wins |
+| `uilib.RemoveImage(path, name)` | drop one of your images of `path` |
+| `uilib.SetMessage(path, name, text, order)` | set the text of the entry `name` of the `.msg` file `path` (e.g. `"msg/lobby_text_en.msg"`, `"name_4293"`), or add the entry when missing. `text` is plain UTF-8. Other entries, and other mods' entries, stay; the same entry from two mods: the later wins |
+| `uilib.RemoveMessage(path, name)` | drop one of your entries of `path` |
+| `uilib.Remove(path)` | drop your edit of `path` (its script, or all your images or messages of it) |
+
+Register in the script's main body or `_OnInit` (the game reads some files,
+like `lobby_text`, during boot: an edit registered after that misses the
+read); F1 drops the edits and the
+script makes them again. `files.Status(path)` shows what happened the last
+time the game read the file.
 
 ### Search boxes
 
@@ -250,6 +303,9 @@ a thread of your own.
 * A DLL mod can use the loader's search boxes too: copy
   `sdk\xv2_search.h` into your mod (it explains the calls; they match the
   Lua ones). Any thread may call them.
+* A DLL mod can edit menus and menu textures alongside other mods the same
+  way as `uilib`: copy `sdk\xv2_ui.h` (`XV2UI_EditScript`, `XV2UI_SetImage`,
+  `XV2UI_SetMessage`, ...).
 
 ### Libraries
 
@@ -320,7 +376,18 @@ exports nothing else.
   by reverse engineering the game's menu files.
 * [XV2-Tools / Xv2CoreLib](https://github.com/LazyBone152/XV2-Tools) by
   LazyBone: the library's game file reader follows its CPK reader (based on
-  CriPakTools) for the `.cpk` archive layout and CRILAYLA compression.
+  CriPakTools) for the `.cpk` archive layout and CRILAYLA compression, and
+  its `MSG_File` for the `.msg` text layout.
+* [eternity_common](https://github.com/eterniti/eternity_common) by eterniti:
+  its `IggyFile` and `EmbFile` were the reference for the `.iggy` container
+  and `.emb` layouts in `UILib\src\formats`. The rest of the Iggy movie
+  (the index, `.iggytex`/`.iggyted`) was found by reverse engineering the
+  game's menu files.
+* Adobe's [ActionScript Virtual Machine 2 (AVM2) Overview](https://www.adobe.com/content/dam/acom/en/devnet/pdf/avm2overview.pdf):
+  the ABC (AS3 bytecode) format the UI library reads, writes and merges.
+* [JPEXS Free Flash Decompiler (FFDec)](https://github.com/jindrapetrik/jpexs-decompiler)
+  by Jindřich Pečínka (GPL-3.0): studied for how it rebuilds AS3 methods, which
+  the UI library's merge allows for (scripts edited with it are merged).
 * `sdk\modloader_lib.lua` uses the annotation format of
   [Lua Language Server](https://luals.github.io/wiki/annotations/) by sumneko
   (LuaLS) so editors can read it.

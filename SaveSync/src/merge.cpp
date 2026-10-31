@@ -2,7 +2,7 @@
 //  The SaveSync merge: a C++ port of offline\savesync.py (its rules were
 //  confirmed in game on 2026-10-11), on the game's decrypted save image. The
 //  offsets are DBXV2.sav file offsets (Xv2CoreLib SAV_File.cs Offsets,
-//  measured on a 1.26.01 save - Research_Notes\save-flags-and-unlocks.md
+//  measured on a 1.27 save - Research_Notes\save-flags-and-unlocks.md
 //  "SaveSync"). Keep this file and the script in step.
 //
 //  * SYSFLAGs: OR, except the few multi-bit counters in kKeepOwnFlags.
@@ -51,8 +51,14 @@ const QuestArray kQuestArrays[] = {
     {"BAQ rift", 2, 105520, 128, kCharacterSize},       {"TCQ mentor lessons", 3, 108592, 256, kCharacterSize},
     {"HLQ expert", 4, 114736, 96, kCharacterSize},      {"RBQ raid", 5, 117040, 96, kCharacterSize},
     {"CHQ Elder Kai", 6, 119344, 64, kCharacterSize},   {"LEQ Frieza siege", 7, 120880, 128, kCharacterSize},
-    {"OSQ Infinite History", 11, 524984, 39, kDlcCharacterSize}, {"PRB", 12, 525944, 39, kDlcCharacterSize},
-    {"TPQ expansion", 0, 527144, 30, kDlcCharacterSize}, {"TMQ expansion", 1, 530120, 31, kDlcCharacterSize},
+    // DLC block: each count is the gap to the next array (measured 2026-10-25;
+    // Xv2CoreLib's 39/39/30/31 predate the later DLC). Story ids run 0-127 /
+    // 128-159 / 160-191 and parallel ids 0-191 / 192-239 across the arrays.
+    {"OSQ Infinite History", 11, 524984, 40, kDlcCharacterSize}, {"PRB", 12, 525944, 40, kDlcCharacterSize},
+    {"type 13", 13, 526904, 10, kDlcCharacterSize},   {"TPQ expansion", 0, 527144, 32, kDlcCharacterSize},
+    {"type 14", 14, 527912, 40, kDlcCharacterSize},   {"type 15", 15, 528872, 10, kDlcCharacterSize},
+    {"type 16", 16, 529112, 10, kDlcCharacterSize},   {"TPQ expansion 2", 0, 529352, 32, kDlcCharacterSize},
+    {"TMQ expansion", 1, 530120, 48, kDlcCharacterSize}, {"type 18", 18, 531272, 42, kDlcCharacterSize},
 };
 const size_t kRecordSize = 24;
 enum RecordField { kType, kQuestId, kState, kRank, kClearedOnce, kScore, kRecordFields };
@@ -69,8 +75,8 @@ const uint32_t kMentorKeepOwn = kMentorFlagLicensed | kMentorFlagDismissal;
 
 // Shenron wish counts: 32 bytes in PlayData (file 126276 + 168), one per wish
 // type of wish_script.dbw. Wish characters are no flag: the character
-// select's check_unlock (0x5e2560) unlocks the first N wish characters, N =
-// byte 7 (read by 0x84ad70 -> 0x83f1f0). Only that byte is merged; the other
+// select's check_unlock (0x5e3090) unlocks the first N wish characters, N =
+// byte 7 (read by 0x858e80 -> 0x84d300). Only that byte is merged; the other
 // wishes give items, so raising their counts would skip the reward.
 const size_t kWishCounts = 126276 + 168, kWishCharacters = 7;
 

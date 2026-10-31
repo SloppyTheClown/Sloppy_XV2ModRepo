@@ -11,6 +11,20 @@ menu notes are in battle-styles-ui.md.
 State (2026-10-10): split out of Battle Styles, NOT all of it seen in
 game - see the bullets below.
 
+**CHARASELE through the UI library, 2026-10-19** (installed on the PC, NOT
+seen in game). Chara Search (`uilib.EditScript`) and Battle Styles
+(`XV2UI_EditScript`) each register only their own edit, one per menu
+version (cpk / xv2patcher) with its FFDec base and game ABC; the library
+merges them in either order (ui-iggy-and-textures.md "Several mods editing
+one menu script", "Menu versions"). Gone: Battle Styles' combined scripts
+(`charasele_search_abc.h`, `charasele_patcher_search_abc.h`,
+`charasearch_ids.h`, `as3\*_Search.as`), `CharaSearchActive()`, and
+CHARASELE in Battle Styles' own file hook. Battle Styles' popup row checks
+that its edit was served via `XV2Files_Status` (`CharaSeleEdited`). Chara
+Search needs the loader's XV2UserInterfaceLib.dll (off with a "update XV2
+Mod Loader" status otherwise). Everything below about one script per menu,
+the combined scripts and the chain order is history.
+
 **Ported to Lua, `CharaSearch\chara_search.lua`, 2026-10-15** (installed on
 the PC, NOT seen in game). The three blockers below were solved in the
 loader library instead (`sdk\modloader_lib.lua` "menus", `files`):
@@ -76,8 +90,8 @@ installed set).
   xv2patcher and CharaSearch's two outputs (`charasearch_ids.h`), so the
   file hooks' order doesn't matter. CharaSearch, given anything else, passes
   it through and logs it. The file hooks chain under `XV2Mods_FileRequestHook`.
-* Both hook the SelectChara AS callback (vtable 0x10be328 slot 17, vanilla
-  0x5e1630) under the mutex `XV2Mods_SelectCharaCallbackHook`. CharaSearch
+* Both hook the SelectChara AS callback (vtable 0x10cc558 slot 17, vanilla
+  0x5e2160) under the mutex `XV2Mods_SelectCharaCallbackHook`. CharaSearch
   takes 9902/9904 and Battle Styles takes 9901 (layout dump). Each passes on
   the rest.
 * Favorites: `mods\CharaSearch\favorite_characters.sav`. On start it copies
@@ -166,7 +180,7 @@ chara_search.as <as3 file>` (inserts chara_search.as's functions).
   stopped it too ("0x5052") - the hook maps by the caller's return address
   and the slot's range, and ReceiveType_CustomList_PartnerJudge_End isn't
   in any range it maps. Fix: don't call the setter. SetUserDataStr
-  (0x2c8240, read from the image past xv2patcher's entry jmp) only does
+  (0x2c8340, read from the image past xv2patcher's entry jmp) only does
   `entry.value = text; entry.type = 6; entry.set = 1; menu[+0x54] |= 1`
   for a slot inside the +0x160/+0x168 vector; the DLL does the same
   writes (WriteUserDataString) on the vector's last entry (= ReceiveType_Num

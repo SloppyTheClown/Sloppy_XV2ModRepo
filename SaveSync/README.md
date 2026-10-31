@@ -1,11 +1,13 @@
 # SaveSync
 
+**Version 1.1.0** · for Dragon Ball Xenoverse 2 **1.27** · needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
+
 Shares unlock progress between your created characters (CaCs) in Dragon Ball
 Xenoverse 2. Turn SaveSync on for some save slots. Every synced slot then
 gets everything any of them has unlocked, and the best score and rank on
 every quest.
 
-Game version 1.26.01. A mod for XV2ModLoader.
+Game version 1.27. A mod for XV2ModLoader.
 
 ## Installing
 

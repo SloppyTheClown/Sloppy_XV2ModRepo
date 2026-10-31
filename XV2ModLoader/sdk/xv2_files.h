@@ -17,9 +17,13 @@
 // * path: the game file, as the end of its path inside data\ - "ui/iggy/
 //   ITEMLIST.iggy" matches "data\ui\iggy\ITEMLIST.iggy"; '/' and '\' are the
 //   same, case is ignored, and the match must start at a folder boundary.
-// * owner: your mod's name (any text). One patch per file: when another
-//   owner already patches it, Replace* is refused; the same owner calling
-//   again replaces its own patch.
+// * owner: your mod's name (any text). The same owner registering again
+//   replaces its own patch of that kind.
+// * Every patched file has a pipeline: the game's file goes in, each patch
+//   in turn gets the file as the patches before it left it and passes it
+//   on, and the game gets what comes out. Replace* patches run first and
+//   allow one owner per file (another owner's Replace* is refused); AddStage
+//   patches stack, any number of owners, in their `order`.
 // * A patch applies to every later read of the file (menus are read each
 //   time they open; most other files once, at boot or at load screens), so
 //   register before the game first reads it - DllMain is fine.
@@ -33,6 +37,30 @@
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
+
+// What an AddStage function writes its result through.
+struct XV2FileOutput {
+    // Hands over the changed file (copied; size > 0, at most 512 MB).
+    void (__cdecl* Set)(XV2FileOutput* output, const void* data, size_t size);
+    // A short text for Status ("3 methods merged", or why it failed);
+    // 0-terminated, may stay empty.
+    char note[256];
+};
+
+// An AddStage function: changes one file on its way to the game.
+//   user               what you passed to AddStage
+//   path               the patched path, normalised ("ui/iggy/itemlist.iggy")
+//   original, size     the game's file, before any patch
+//   current, size      the file as the stages before yours left it
+//   output             call output->Set with your result
+// Returns 1 = changed (output->Set called), 0 = unchanged, -1 = failed (the
+// current file is passed on; write why into output->note).
+// May run on any of the game's loading threads, several files at once; it
+// must not call XV2Files functions. The game only waits for it on that
+// file's load, but keep it quick: menus are read each time they open, and
+// the result is cached per input, so it runs once per distinct input.
+typedef int (__cdecl* XV2FileStage)(void* user, const char* path, const void* original, size_t originalSize,
+                                    const void* current, size_t currentSize, XV2FileOutput* output);
 
 struct XV2Files {
     // Serves `data` instead of the game file at `path`, whole.
@@ -56,21 +84,36 @@ struct XV2Files {
                              uint32_t vanillaAbcSize, uint64_t vanillaAbcHash, char* reason,
                              int reasonBytes) = nullptr;
 
-    // Removes `owner`'s patch of `path`: later reads get the game's file.
-    // Returns 1 when there was one, otherwise 0.
+    // Removes `owner`'s patches of `path` (all kinds): later reads go
+    // through the remaining ones. Returns 1 when there were any, otherwise 0.
     int (*Remove)(const char* owner, const char* path) = nullptr;
 
     // Copies what happened when the game last read the file at `path`:
-    // "registered, not loaded by the game yet", "served: ..." or
-    // "NOT patched: <why>" - "" when no mod patches it.
+    // "registered, not loaded by the game yet", "served: ...", "unchanged"
+    // or "NOT patched: <why>"; with several patches each owner's, as
+    // "owner: outcome; owner: outcome" - "" when no mod patches it.
     //   out, outBytes   as XV2Search::Query: cut to fit, always 0-terminated
     // Returns the text's full length in bytes (0 = no patch).
     int (*Status)(const char* path, char* out, int outBytes) = nullptr;
 
-    // Copies the owner of the patch of `path` (the DLL mod's owner name or
-    // the Lua script's LUA_NAME); "" when no mod patches it.
+    // Copies the owner of the first patch of `path` (the DLL mod's owner name
+    // or the Lua script's LUA_NAME); "" when no mod patches it.
     // Returns the name's full length in bytes. Null with an older library.
     int (*Owner)(const char* path, char* out, int outBytes) = nullptr;
+
+    // Adds `function` to the pipeline of `path` (see XV2FileStage above).
+    //   order    lower runs earlier; equal orders run in registration order.
+    //            0 is the usual; Replace* patches always run before.
+    //   user     passed back to `function`
+    // The same owner adding again replaces its stage (keeping its place).
+    // Returns 1 when registered, 0 when refused (reason set as for ReplaceFile).
+    // Null with an older library.
+    int (*AddStage)(const char* owner, const char* path, int order, XV2FileStage function, void* user, char* reason,
+                    int reasonBytes) = nullptr;
+
+    // Copies every owner patching `path`, in running order, one per line
+    // ("A\nB"); "" when none. Returns the full length. Null with an older library.
+    int (*Owners)(const char* path, char* out, int outBytes) = nullptr;
 
     // Reads a game file as the game finds it: loose data\ first (x2m and
     // Revamp files count), then the .cpk archives. Read-only; patches are not
@@ -124,6 +167,8 @@ struct XV2Files {
         ReadGameFilePart = reinterpret_cast<decltype(ReadGameFilePart)>(GetProcAddress(library, "XV2Files_ReadGameFilePart"));
         SetGameFolder = reinterpret_cast<decltype(SetGameFolder)>(GetProcAddress(library, "XV2Files_SetGameFolder"));
         Owner = reinterpret_cast<decltype(Owner)>(GetProcAddress(library, "XV2Files_Owner"));
+        AddStage = reinterpret_cast<decltype(AddStage)>(GetProcAddress(library, "XV2Files_AddStage"));
+        Owners = reinterpret_cast<decltype(Owners)>(GetProcAddress(library, "XV2Files_Owners"));
         return found;
     }
 };

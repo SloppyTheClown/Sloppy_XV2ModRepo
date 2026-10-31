@@ -1,6 +1,8 @@
 # General QoL
 
-A mod for XV2 Mod Loader (Dragon Ball Xenoverse 2, game version 1.26.01).
+**Version 1.1.0** · for Dragon Ball Xenoverse 2 **1.27** · needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
+
+A mod for XV2 Mod Loader (Dragon Ball Xenoverse 2, game version 1.27).
 Each feature can be switched on or off in `general_qol.json`; some start
 off (see [Settings](#settings-general_qoljson)):
 
@@ -26,6 +28,9 @@ off (see [Settings](#settings-general_qoljson)):
 * **Level cap:** the maximum level is 199 from the start, without the Elder
   Kai and Whis level cap events. This is saved for the whole save file, so
   every character on it keeps it.
+* **Attribute points:** points you already confirmed can be taken back out
+  in the Attributes menu (down to 0) and spent elsewhere, without the
+  Shenron reset wish.
 * **TP medal shop:** the items that normally rotate with the seasons are all
   sold all year.
 * **Raid characters:** the Master Raid bosses (Supreme Kai of Time,
@@ -82,6 +87,7 @@ To remove it, delete the `General_QoL` folder.
 | `unlock_level_cap` | `true` | maximum level 199 from the start (whole save file) |
 | `tp_shop_all_seasons` | `true` | the TP medal shop sells every seasonal item all year |
 | `mentor_names_on_map` | `true` | the Conton City map shows the names of the mentors you have discovered next to their icons |
+| `free_attribute_points` | `true` | confirmed attribute points can be moved again in the Attributes menu |
 | `reveal_hidden_conditions` | `false` | parallel quest details show every condition instead of "???" |
 | `raid_characters` | `false` | unlock the Master Raid bosses (whole save file) |
 | `wait_for_all_ready` | `true` | online rooms start only once every player is ready, with no 15 second countdown |
@@ -166,7 +172,7 @@ The time rifts in Conton City still start each DLC story the first time.
 Hiding Spots and Culina also hides where their stories normally begin;
 those quests are in the DLC Master's list instead.
 
-On any game version other than 1.26.01 the mod changes nothing.
+On any game version other than 1.27 the mod changes nothing.
 
 ## Building
 
@@ -183,7 +189,8 @@ to the game folder); `Build_Uninstall.bat` removes it again.
 * [XV2Patcher](https://github.com/eterniti/xv2patcher) by Eternity - the
   pre-baked.xml aura data (CusAuraData) x2m awoken skills use.
 * [JPEXS Free Flash Decompiler](https://github.com/jindrapetrik/jpexs-decompiler)
-  by Jindřich Pető - compiles the lobby map's ActionScript.
+  by Jindřich Pető - compiles the lobby map's and the Attributes menu's
+  ActionScript.
 * Everything else (where the game checks flags, quests, DLC and the raid
   characters, the boot sequence, the camera, sound): found by reverse
   engineering the game.

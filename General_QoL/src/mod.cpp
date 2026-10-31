@@ -54,7 +54,7 @@
 //    Other mods may hook the same methods: whatever is already there
 //    is chained to.
 //
-//  Addresses are for game 1.26.01; on any other version the mod logs it and
+//  Addresses are for game 1.27; on any other version the mod logs it and
 //  changes nothing.
 // ---------------------------------------------------------------------------
 #include "mod.h"
@@ -64,9 +64,14 @@
 #include "data.h"
 #include "replay_npc.h"
 #include "map_names.h"
+#include "iggy_abc.h"
 #include "hud_stages.h"
 #include "default_config.h"
+#include "xv2_files.h"  // the loader's game file reading (XV2ModLoader\sdk)
+#include "xv2_ui.h"     // the loader's UI library: image + message edits
 #include <intrin.h>
+#include <atomic>
+#include <iterator>
 #include <cmath>
 #include <cstdarg>
 #include <cstdint>
@@ -109,6 +114,7 @@ struct Config {
     float zoomSpeed = 1.8f;  // zoom factor per second while a key is held
     float zoomMin = 0.5f, zoomMax = 4.0f;
     bool mentorNames = false;  // mentor_names_on_map
+    bool freeAttributePoints = false;  // free_attribute_points
     bool logging = false;
     bool logFiles = false;  // debug: log every file path the game loads
     ReplayNpc npc;
@@ -144,6 +150,13 @@ static void Log(const char* fmt, ...)
     if (!g_cfg.logging) return;
     wchar_t path[MAX_PATH];
     swprintf_s(path, L"%s\\general_qol.log", g_dir);
+    // One session per log: the first write of a run moves the last run's log to <name>.prev.log.
+    static volatile LONG rotated = 0;
+    if (!InterlockedExchange(&rotated, 1)) {
+        wchar_t previous[MAX_PATH];
+        swprintf_s(previous, L"%s\\general_qol.prev.log", g_dir);
+        MoveFileExW(path, previous, MOVEFILE_REPLACE_EXISTING);
+    }
     FILE* f = nullptr;
     if (_wfopen_s(&f, path, L"a") || !f) return;
     SYSTEMTIME st; GetLocalTime(&st);
@@ -283,6 +296,7 @@ static void LoadConfig()
         }
     }
     c.mentorNames = j.boolOr("mentor_names_on_map", c.mentorNames);
+    c.freeAttributePoints = j.boolOr("free_attribute_points", c.freeAttributePoints);
     c.revealConditions = j.boolOr("reveal_hidden_conditions", c.revealConditions);
     c.raidCharacters = j.boolOr("raid_characters", c.raidCharacters);
     c.waitForAllReady = j.boolOr("wait_for_all_ready", c.waitForAllReady);
@@ -394,17 +408,17 @@ static void WriteSaved()
 }
 
 // ------------------------------------------------------------ addresses ---
-// Game 1.26.01 (DBXV2.exe).
+// Game 1.27 (DBXV2.exe).
 static uintptr_t g_base = 0;
-static const uintptr_t kRequestVtable = 0xf9b270;  // file request class
-static const uintptr_t kQuestData = 0x15545b0;     // global: quest data manager
+static const uintptr_t kRequestVtable = 0xfa92f0;  // file request class
+static const uintptr_t kQuestData = 0x1568310;     // global: quest data manager
 // System flags (script SYSFLAG/SETSYSFLAG) are per character: 2048 bits at
 // the start of the loaded character's save block,
-// manager + 0xe700 + slot * 0xe880 (0x81ad00), slot = int at manager+8+0x44
+// manager + 0xe710 + slot * 0xe880 (0x828ca0), slot = int at manager+8+0x44
 // (0x433e0). Verified in game: the flight scene's flag 801 and a robot's
 // first-talk flag 114 appear there as they are set.
 static const uintptr_t kSlot = 8 + 0x44;
-static const uintptr_t kFirstBlock = 0xe700, kBlockSize = 0xe880;
+static const uintptr_t kFirstBlock = 0xe710, kBlockSize = 0xe880;
 static const int kSlots = 8;
 static const int kFirstTeleport = 60, kLastTeleport = 69;  // UNLOCK_TELEPORT_POINT_01..10
 // The shops' and desks' own unlock flags (their triggers and scripts check
@@ -419,14 +433,14 @@ static const int kDeskUnlocks[] = {0, 1, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 5213}
 // is cleared. With it on, that rift is there and the scene never plays.
 static const int kExpertListRift = 2400;
 // Account flags (script ACCFLAG/SETACCFLAG) are save-wide: 288 bits at
-// manager + 8 + 0xcc (ACCFLAG handler 0x3c9988 -> 0x4b9b0, getter 0x826ba0).
-// The maximum level (0x848dd0) is 199, lowered to 180/160/140/120/99 while
+// manager + 8 + 0xcc (ACCFLAG handler 0x3c9c38 -> 0x4b9b0, getter 0x834be0).
+// The maximum level (0x856ee0) is 199, lowered to 180/160/140/120/99 while
 // ACCFLAG_MAXIMUM_LV_STAGE9..5 (34..30, set by Whis's level cap talks) are
 // off and to 95/90/85/80 while STAGE4..1 (9..6, set by the Elder Kai
 // events) are off. Only the Lite version caps it lower.
 static const uintptr_t kAccountFlags = 8 + 0xcc;
 static const int kLevelCapStages[] = {6, 7, 8, 9, 30, 31, 32, 33, 34};
-// Raid bosses: the character select's table (0x5e4140) shows a raid boss
+// Raid bosses: the character select's table (0x5e4c70) shows a raid boss
 // slot only while its account flag is on: DMG 20, MRN 21, ZMD 22
 // (ACCFLAG_ORE_RAID_UNLOCK_*, set when Fu gets the boss's TP shop gift,
 // npc_talk_present_fuu.tsr), STD and SBM costume 6 24
@@ -439,14 +453,14 @@ static const int kRaidBossFlags[] = {20, 21, 22, 24};
 static const char kLobbyEvents[] = "data/event/lobby/lobby_event_manage.tsd";
 // The lobby NPCs these edit: see lobby_npcs.h.
 
-// DBXV2.exe 1.26.01, from its PE header (readable before Steam's DRM has
+// DBXV2.exe 1.27, from its PE header (readable before Steam's DRM has
 // decrypted the code).
-static bool IsGame12601()
+static bool IsSupportedGame()
 {
     const uint8_t* b = (const uint8_t*)g_base;
     uint32_t pe = *(const uint32_t*)(b + 0x3C);
-    return *(const uint32_t*)(b + pe + 8) == 0x6A63732E &&        // TimeDateStamp
-           *(const uint32_t*)(b + pe + 24 + 56) == 0x1A1F000;     // SizeOfImage
+    return *(const uint32_t*)(b + pe + 8) == 0x6AAA4CB1 &&        // TimeDateStamp
+           *(const uint32_t*)(b + pe + 24 + 56) == 0x1A33000;     // SizeOfImage
 }
 
 // ------------------------------------------------------------ file hook ---
@@ -481,7 +495,7 @@ static uint64_t Fnv64(const uint8_t* bytes, size_t size)
     return hash;
 }
 
-enum class FileKind { None, LobbyEvents, Quests, Items, TpShop, NpcFile, LobbyHud };
+enum class FileKind { None, LobbyEvents, Quests, Items, TpShop, NpcFile, LobbyHud, AvatarFaculty };
 
 // Cheap first filter on the raw path: only .tsr .tsd .qxd .idb .est .tnl .msg
 // .acb .iggytex .iggy matter.
@@ -535,6 +549,7 @@ static FileKind Classify(const std::string& path)
         return FileKind::TpShop;
     if (ClassifyNpcFile(path) != NpcFile::None) return FileKind::NpcFile;
     if (ends("data/ui/iggy/lobyhud.iggy")) return FileKind::LobbyHud;
+    if (ends("data/ui/iggy/avatar_faculty.iggy")) return FileKind::AvatarFaculty;
     return FileKind::None;
 }
 
@@ -645,11 +660,148 @@ static bool EditTpShop(const std::string& path, const uint8_t* data, size_t size
     return items > 0;
 }
 
+// ------------------------------------------------- menu title art (UI library)
+// The "Future Saga" title art (replay_npc.cpp BlankMenuTitleArt) is handed to
+// the loader's UI library as an image edit of texture 14 per language, so
+// other mods' images of CMNTITLE_<lang>.iggytex apply too
+// (ui-iggy-and-textures.md "Several mods editing one texture file"). A
+// language the library doesn't take (no library, an older one without
+// XV2UI_SetImage, a texture laid out otherwise) is blanked by the file hook
+// in the whole file, as before.
+static const char* const kTitleLanguages[] = {"ca", "de", "en", "es", "fr", "it", "ja",
+                                              "kr", "pl", "pt", "ru", "tw", "zh"};  // the cpks' 13
+static std::atomic<bool> g_titleArtByUiLib[std::size(kTitleLanguages)];
+
+// Index in kTitleLanguages of a <name>_<lang><extension> path
+// (cmntitle_en.iggytex, lobby_text_en.msg), or -1.
+static int LanguageIndex(const std::string& path, const char* extension)
+{
+    const size_t tail = 2 + strlen(extension);
+    if (path.size() < tail) return -1;
+    const std::string language = path.substr(path.size() - tail, 2);
+    for (size_t i = 0; i < std::size(kTitleLanguages); ++i)
+        if (language == kTitleLanguages[i]) return (int)i;
+    return -1;
+}
+
+// Builds each language's blanked texture 14 from the game's own (read
+// through the loader: only the texture table and texture 14, the file's
+// last 1.2 MB) and registers it with the UI library. Runs once at start.
+static void RegisterTitleArtImages()
+{
+    XV2UI ui;
+    XV2Files files;
+    ui.Load();
+    files.Load();
+    if (!ui.SetImage || !files.FindGameFile || !files.ReadGameFilePart) {
+        Log("menu title art: the loader has no image edits (XV2UI_SetImage) - the file hook blanks it");
+        return;
+    }
+    int registered = 0;
+    std::string failures;
+    for (size_t i = 0; i < std::size(kTitleLanguages); ++i) {
+        const std::string path = std::string("ui/iggy/CMNTITLE_") + kTitleLanguages[i] + ".iggytex";
+        std::string note;
+        uint8_t head[kMenuTitleHeadBytes];
+        uint32_t offset = 0, size = 0;
+        std::vector<uint8_t> original, blanked;
+        const long long fileSize = files.FindGameFile(path.c_str(), nullptr, 0);
+        if (fileSize < 0) {
+            note = "not found";
+        } else if (files.ReadGameFilePart(path.c_str(), 0, head, sizeof(head)) != (long long)sizeof(head)) {
+            note = "unreadable";
+        } else if (FindMenuTitleTexture(head, sizeof(head), (uint64_t)fileSize, offset, size, note)) {
+            original.resize(size);
+            if (files.ReadGameFilePart(path.c_str(), offset, original.data(), size) != (long long)size) {
+                note = "texture 14 unreadable";
+            } else if (BlankMenuTitleArt(g_cfg.npc, original.data(), size, blanked, note)) {
+                char reason[256] = {};
+                if (ui.SetImage("General_QoL", path.c_str(), "14", blanked.data(), blanked.size(), 0, reason,
+                                (int)sizeof(reason))) {
+                    g_titleArtByUiLib[i] = true;
+                    ++registered;
+                    continue;
+                }
+                note = std::string("refused: ") + reason;
+            }
+        }
+        failures += std::string(failures.empty() ? "" : ", ") + kTitleLanguages[i] + " " + note;
+    }
+    Log("menu title art: texture 14 handed to the UI library for %d of %d languages%s%s", registered,
+        (int)std::size(kTitleLanguages), failures.empty() ? "" : "; the file hook blanks the rest: ",
+        failures.c_str());
+}
+
+// ------------------------------------------------- replay NPC text (UI library)
+// The replay NPC's name and lines (lobby_text_<lang>.msg) and the quest menu
+// title (menu_title_text_<lang>.msg) go to the UI library as message edits,
+// entry by entry, so other mods' texts of the same files apply too
+// (ui-iggy-and-textures.md "msg text"). A file the library doesn't take (no
+// library, an older one without XV2UI_SetMessage) is edited by the file hook
+// as before. The msg files exist in the same 13 languages as CMNTITLE.
+static std::atomic<bool> g_lobbyTextByUiLib[std::size(kTitleLanguages)];
+static std::atomic<bool> g_menuTitlesByUiLib[std::size(kTitleLanguages)];
+
+// Registers every language's texts with the UI library. Runs once at start.
+static void RegisterNpcMessages()
+{
+    XV2UI ui;
+    ui.Load();
+    if (!ui.SetMessage) {
+        Log("replay NPC text: the loader has no message edits (XV2UI_SetMessage) - the file hook sets it");
+        return;
+    }
+    struct MsgFileKind { NpcFile kind; const char* prefix; std::atomic<bool>* taken; };
+    const MsgFileKind kinds[] = {
+        {NpcFile::LobbyText, "msg/lobby_text_", g_lobbyTextByUiLib},
+        {NpcFile::MenuTitles, "msg/menu_title_text_", g_menuTitlesByUiLib},
+    };
+    int registered = 0, files = 0;
+    std::string failures;
+    for (const MsgFileKind& file : kinds) {
+        const std::vector<NpcMessage> messages = NpcMessages(file.kind, g_cfg.npc);
+        if (messages.empty()) continue;
+        for (size_t i = 0; i < std::size(kTitleLanguages); ++i) {
+            const std::string path = std::string(file.prefix) + kTitleLanguages[i] + ".msg";
+            ++files;
+            bool all = true;
+            for (const NpcMessage& message : messages) {
+                char reason[256] = {};
+                if (!ui.SetMessage("General_QoL", path.c_str(), message.key.c_str(), message.text.c_str(), 0, reason,
+                                   (int)sizeof(reason))) {
+                    failures += std::string(failures.empty() ? "" : ", ") + path + " " + message.key + ": " + reason;
+                    all = false;
+                    break;
+                }
+            }
+            if (all) {
+                file.taken[i] = true;
+                ++registered;
+            } else if (ui.Remove) {
+                ui.Remove("General_QoL", path.c_str());   // all or nothing: the file hook does this file
+            }
+        }
+    }
+    Log("replay NPC text: handed to the UI library for %d of %d msg files%s%s", registered, files,
+        failures.empty() ? "" : "; the file hook edits the rest: ", failures.c_str());
+}
+
 static bool EditNpc(const std::string& path, const uint8_t* data, size_t size, std::vector<uint8_t>& out)
 {
     if (!g_cfg.npc.enabled) return false;
+    const NpcFile kind = ClassifyNpcFile(path);
+    // files the UI library's stages edit
+    if (kind == NpcFile::MenuTitleArt) {
+        const int language = LanguageIndex(path, ".iggytex");
+        if (language >= 0 && g_titleArtByUiLib[language]) return false;
+    }
+    if (kind == NpcFile::LobbyText || kind == NpcFile::MenuTitles) {
+        const int language = LanguageIndex(path, ".msg");
+        const auto& taken = kind == NpcFile::LobbyText ? g_lobbyTextByUiLib : g_menuTitlesByUiLib;
+        if (language >= 0 && taken[language]) return false;
+    }
     std::string note;
-    bool edited = EditNpcFile(ClassifyNpcFile(path), g_cfg.npc, data, size, out, note);
+    bool edited = EditNpcFile(kind, g_cfg.npc, data, size, out, note);
     Log("%s (%llu bytes): %s%s", path.c_str(), (unsigned long long)size, note.c_str(), edited ? "" : " - left as is");
     return edited;
 }
@@ -664,6 +816,18 @@ static bool EditLobbyHud(const std::string& path, const uint8_t* data, size_t si
     return edited;
 }
 
+// The attribute points menu's script (iggy_abc.cpp): confirmed points can be
+// taken back out. The menu's own floor was the only lock - the exe saves
+// whatever values it is sent (Research_Notes\qol-mods.md "Free attribute points").
+static bool EditAvatarFaculty(const std::string& path, const uint8_t* data, size_t size, std::vector<uint8_t>& out)
+{
+    if (!g_cfg.freeAttributePoints) return false;
+    std::string note;
+    bool edited = PatchAvatarFaculty(data, size, out, note);
+    Log("%s (%llu bytes): %s%s", path.c_str(), (unsigned long long)size, note.c_str(), edited ? "" : " - left as is");
+    return edited;
+}
+
 static bool EditFile(FileKind kind, const std::string& path, const uint8_t* data, size_t size,
                      std::vector<uint8_t>& out)
 {
@@ -674,6 +838,7 @@ static bool EditFile(FileKind kind, const std::string& path, const uint8_t* data
     case FileKind::Quests: return EditQuests(path, data, size, out);
     case FileKind::Items: return EditItems(path, data, size, out);
     case FileKind::LobbyHud: return EditLobbyHud(path, data, size, out);
+    case FileKind::AvatarFaculty: return EditAvatarFaculty(path, data, size, out);
     default: return false;
     }
 }
@@ -742,7 +907,7 @@ static uint64_t __fastcall HkSize38(void* request) { return ServeSize(request, g
 // chaining to whatever is in the table, under a lock every such mod shares.
 static bool InstallFileHook()
 {
-    if (!IsGame12601()) return false;
+    if (!IsSupportedGame()) return false;
     HANDLE lock = CreateMutexW(nullptr, FALSE, L"XV2Mods_FileRequestHook");
     if (lock) WaitForSingleObject(lock, 10000);
     uintptr_t* vtable = (uintptr_t*)(g_base + kRequestVtable);
@@ -767,19 +932,19 @@ static double MsSinceStart();
 
 // ---------------------------------------------------------- replay menu ---
 // Quest-list menus (QUEST_MENU "TPQ", -1, <list>): Brashy's -3 (TPQ_ADD) and
-// Dastar's -5 (TPQ_FUTURE) are built by 0x599ba0 and 0x5996c0 from the save's
+// Dastar's -5 (TPQ_FUTURE) are built by 0x59a6f0 and 0x59a210 from the save's
 // story progress. For those two lists the mod builds the list from the config
-// instead: 0x81ac70([0x15545b0], -1) -> ctx; 0x834600(ctx, 0x59a5a0([menu+
+// instead: 0x828c10([0x1568310], -1) -> ctx; 0x842710(ctx, 0x59b0f0([menu+
 // 0xa0]), name) -> quest; appended with the game's 0x3def0.
-static const uintptr_t kBuildAddMenu = 0x599ba0;    // builds quest list -3 (TPQ_ADD, Brashy)
-static const uintptr_t kBuildFutureMenu = 0x5996c0; // builds quest list -5 (TPQ_FUTURE, Dastar)
-static const uintptr_t kQuestCtx = 0x81ac70;        // (questData, -1) -> quest context
-static const uintptr_t kQuestByName = 0x834600;     // (ctx, typeIndex, name) -> quest
+static const uintptr_t kBuildAddMenu = 0x59a6f0;    // builds quest list -3 (TPQ_ADD, Brashy)
+static const uintptr_t kBuildFutureMenu = 0x59a210; // builds quest list -5 (TPQ_FUTURE, Dastar)
+static const uintptr_t kQuestCtx = 0x828c10;        // (questData, -1) -> quest context
+static const uintptr_t kQuestByName = 0x842710;     // (ctx, typeIndex, name) -> quest
 static const uintptr_t kVecInsert = 0x3def0;        // vector<void*> grow-and-insert
-static const uintptr_t kTypeIndex = 0x59a5a0;       // menu quest type -> type index
-static const uintptr_t kQuestRecord = 0x7fb090;     // (tables, type, index) -> quest's QXD record
-static const uintptr_t kDlcAllowed = 0x59b570;      // (menu, DLC_Flag) -> nonzero if every DLC bit passes
-static const uintptr_t kProgressMgr = 0x1554458;    // global: progress manager; +0x928 quest tables
+static const uintptr_t kTypeIndex = 0x59b0f0;       // menu quest type -> type index
+static const uintptr_t kQuestRecord = 0x809000;     // (tables, type, index) -> quest's QXD record
+static const uintptr_t kDlcAllowed = 0x59c0c0;      // (menu, DLC_Flag) -> nonzero if every DLC bit passes
+static const uintptr_t kProgressMgr = 0x15681b8;    // global: progress manager; +0x928 quest tables
 
 struct Sig { uintptr_t rva; const char* hex; };
 static const Sig kMenuSigs[] = {
@@ -825,7 +990,7 @@ static bool    g_loggedMissing = false;
 
 // Fills the menu's quest vector with the configured quests this character
 // can play: each must pass the game's own DLC_Flag check, as every other
-// quest list does (the original builder: QXD record +0x10c -> 0x59b570), and
+// quest list does (the original builder: QXD record +0x10c -> 0x59c0c0), and
 // one with no DLC_Flag, which that check never holds back, must be reached:
 // state (quest vt+0x18, as the original builder reads it) past QUEST_LOCK (0).
 static void BuildReplayList(void* menu, void** vec, BuildFn orig)
@@ -963,35 +1128,35 @@ static void InstallReplayMenu()
         ok = InstallMenuHook(kBuildAddMenu, (void*)&HkBuildAddMenu, &g_origAdd) &&
              InstallMenuHook(kBuildFutureMenu, (void*)&HkBuildFutureMenu, &g_origFuture);
     Log(ok ? "replay menu hook installed at %.0f ms (%d quests configured)"
-           : "replay menu hook NOT installed (%.0f ms): code does not match game 1.26.01",
+           : "replay menu hook NOT installed (%.0f ms): code does not match game 1.27",
         MsSinceStart(), (int)g_cfg.quests.size());
 }
 
 // ---------------------------------------------------------- map names ---
 // The lobby map (LOBYHUD.iggy) gets one text line per icon from the game,
-// "Event:id=<icon>,x=<%>,y=<%>". 0x3e9890 walks the lobby NPCs and calls
-// 0x5767c0(map, [npc+0x1c], icon type [npc+0x34c], &position = npc+0x2d0)
+// "Event:id=<icon>,x=<%>,y=<%>". 0x3e9b60 walks the lobby NPCs and calls
+// 0x577310(map, [npc+0x1c], icon type [npc+0x34c], &position = npc+0x2d0)
 // for each; that one starts the line with "Event:", prints
 // "id=%d,x=%d,y=%d" and adds it with std::string::append(text, count)
-// (0x7a740) at 0x576904. The call there is pointed at a cave that passes rdi
-// - still the NPC's position pointer (0x5767e7 mov rdi, r9) - on as a 4th
+// (0x7a740) at 0x577454. The call there is pointed at a cave that passes rdi
+// - still the NPC's position pointer (0x577337 mov rdi, r9) - on as a 4th
 // argument; HkMapEventAppend adds the NPC's name (the wide string at
-// npc+0x42 the game shows with %ls, getter 0x4aa1d0) as ",c0=..,c1=..".
+// npc+0x42 the game shows with %ls, getter 0x4aab00) as ",c0=..,c1=..".
 // The edited map script (as3\LobbyMap.as, served by EditLobbyHud) shows
 // the name next to the instructor icons.
-static const uintptr_t kMapEventAppendCall = 0x576904;  // e8 rel32 -> 0x7a740
+static const uintptr_t kMapEventAppendCall = 0x577454;  // e8 rel32 -> 0x7a740
 static const uintptr_t kStringAppend = 0x7a740;         // std::string::append(this, text, count)
-static const uintptr_t kNpcPosition = 0x2d0;            // getter 0x4aa1c0
-static const uintptr_t kNpcName = 0x42;                 // getter 0x4aa1d0(npc, 0); the next string is at +0x142
+static const uintptr_t kNpcPosition = 0x2d0;            // getter 0x4aaaf0
+static const uintptr_t kNpcName = 0x42;                 // getter 0x4aab00(npc, 0); the next string is at +0x142
 static const size_t kNpcNameMaxChars = 64;              // also LobbyMap.as eventName's limit
 
 static const Sig kMapNameSigs[] = {
-    {0x5767e7, "49 8B F9 41 8B E8 8B DA 48 8B"},                // mov rdi, r9 (position) ...
-    {0x5768fa, "48 8D 54 24 70 48 8D 4C 24 48 E8 37 3E B0 FF"},  // ... append(line, "id=..", count)
-    {0x3e994f, "E8 6C 08 0C 00 4C 8B E0"},                      // r12 = position getter(npc)
-    {0x3e99be, "4D 8B CC 44 8B C3 41 8B D7 49 8B 8E 68 01 00 00"},  // r9 = r12, then call 0x5767c0
-    {0x4aa1c0, "48 8D 81 D0 02 00 00 C3"},                      // position = npc + 0x2d0
-    {0x4aa1d0, "48 8D 81 42 01 00 00 85 D2 75 04 48 8D 41 42 C3"},  // name = npc + 0x42 / 0x142
+    {0x577337, "49 8B F9 41 8B E8 8B DA 48 8B"},                // mov rdi, r9 (position) ...
+    {0x57744a, "48 8D 54 24 70 48 8D 4C 24 48 E8 E7 32 B0 FF"},  // ... append(line, "id=..", count)
+    {0x3e9c1f, "E8 CC 0E 0C 00 4C 8B E0"},                      // r12 = position getter(npc)
+    {0x3e9c8e, "4D 8B CC 44 8B C3 41 8B D7 49 8B 8E 68 01 00 00"},  // r9 = r12, then call 0x577310
+    {0x4aaaf0, "48 8D 81 D0 02 00 00 C3"},                      // position = npc + 0x2d0
+    {0x4aab00, "48 8D 81 42 01 00 00 85 D2 75 04 48 8D 41 42 C3"},  // name = npc + 0x42 / 0x142
 };
 
 typedef void* (__fastcall* StringAppendFn)(void* line, const char* text, size_t count);
@@ -1041,7 +1206,7 @@ static void InstallMapNames()
         }
     }
     Log(ok ? "map names hook installed at %.0f ms"
-           : "map names hook NOT installed (%.0f ms): code does not match game 1.26.01",
+           : "map names hook NOT installed (%.0f ms): code does not match game 1.27",
         MsSinceStart());
 }
 
@@ -1098,88 +1263,88 @@ static void UpdateFlags()
 
 // ----------------------------------------------------------------- boot ---
 
-// Logos: the Logo step (0x57e620) updates the logo slideshow (Advertise,
+// Logos: the Logo step (0x57f170) updates the logo slideshow (Advertise,
 // 8 slides, ~19 s) and waits while it is not done:
 //   call IsDone ; test eax,eax ; je wait ; mov rcx,[rbx+0x60]
 // Removing the je makes it finish on its first frame; the game then resets
 // the slideshow and moves on as usual.
-static const uintptr_t kLogoWait = 0x57e63b;
+static const uintptr_t kLogoWait = 0x57f18b;
 static const uint8_t kLogoWaitCode[] = {0x85, 0xC0, 0x74, 0x51, 0x48, 0x8B, 0x4B, 0x60};
 
 // Intro movie: Menu::WaitInstall plays demo A00_01 (the intro) before the
-// title. Its Start (0x6284e0, called through Event::WaitInstall's vtable
-// 0xfcd808 slot 1) creates the demo player and runs load -> play -> stop;
-// IsDone (slot 3) reads [obj+0x60], which only Stop (0x628180, slot 4) sets.
+// title. Its Start (0x62c150, called through Event::WaitInstall's vtable
+// 0xfdb8f8 slot 1) creates the demo player and runs load -> play -> stop;
+// IsDone (slot 3) reads [obj+0x60], which only Stop (0x62bdf0, slot 4) sets.
 // Start jumps straight to Stop: done at once, nothing loaded - what the
 // game does when the intro is skipped with a button, minus the movie.
-static const uintptr_t kIntroStart = 0x6284e0, kIntroStop = 0x628180;
+static const uintptr_t kIntroStart = 0x62c150, kIntroStop = 0x62bdf0;
 static const uint8_t kIntroStartCode[] = {0x40, 0x57, 0x48, 0x83, 0xEC, 0x70, 0x48, 0xC7, 0x44, 0x24, 0x30};
 static const uint8_t kIntroStopCode[] = {0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x40};
 
 // Title volume: volume options are only read from the save after Start, so
 // until then (intro, title screen) the sound system plays everything at full
-// volume. The game applies them in 0x8479e0: category 0 <- option 3, 2 <- 4,
-// 1 <- 5, each level 0..5 through the table at 0x10d3178 (0.0, 0.2 .. 1.0),
-// with SetCategoryVolume (0x363d10) on Sound::System (global 0x1554490),
+// volume. The game applies them in 0x855af0: category 0 <- option 3, 2 <- 4,
+// 1 <- 5, each level 0..5 through the table at 0x10e1c38 (0.0, 0.2 .. 1.0),
+// with SetCategoryVolume (0x363f90) on Sound::System (global 0x15681f0),
 // which it calls only when [snd+0x10] != 0 and [snd+0x18bc8] == 0 (0x433d0,
-// 0x362fa0). The mod does the same once, with the levels remembered from the
+// 0x363220). The mod does the same once, with the levels remembered from the
 // last time a character was loaded (RememberVolume); before it has seen any,
 // it mutes category 0 (music). The save's own settings replace it on Start.
-static const uintptr_t kSound = 0x1554490, kSetCategoryVolume = 0x363d10, kVolumeTable = 0x10d3178;
+static const uintptr_t kSound = 0x15681f0, kSetCategoryVolume = 0x363f90, kVolumeTable = 0x10e1c38;
 static const uint8_t kSetCategoryVolumeCode[] = {0x40, 0x56, 0x57, 0x41, 0x56, 0x48, 0x83, 0xEC, 0x40};
 static const float kVolumeLevels[6] = {0.0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f};
 static const int kVolumeCategory[3] = {0, 2, 1};  // for options 3, 4, 5
 typedef void(__fastcall* SetCategoryVolumeFn)(void* sound, int category, float volume);
 
-// Conton TV lobby loop: "is Conton TV unlocked" (0x3d5220) is true when
+// Conton TV lobby loop: "is Conton TV unlocked" (0x3d54d0) is true when
 // SYSFLAG 34 CTP_EPISODE_01_AND_02_CLEARED, SYSFLAG 80 PUT_CONTONTOTV or
 // story quest CTP_99_01 is set/cleared. While the TV is not placed (80 off)
-// and it says unlocked, the lobby (0x3e5909, 0x3e5a08) sets the TV up, which
+// and it says unlocked, the lobby (0x3e5bd5, 0x3e5cd4) sets the TV up, which
 // reloads the lobby - but the scene that places it (CTV_UNLOCK_EVENT,
 // setup_pre_positioning.tsr) only runs once CTP_99_01 is cleared. A save with
 // flag 34 on and CTP_99_01 not cleared (Save Editor 3.5.0 "Validate Flags"
 // does this) reloads Conton City forever. The game only sets 34 when
 // CTP_99_01 is cleared, so the flag-34 test is redundant for a consistent
 // save: it is changed to test flag 80 instead (the instruction
-// mov dword [rsp+0x38], 34 at 0x3d5230, the flag id byte at +4). Found by
+// mov dword [rsp+0x38], 34 at 0x3d54e0, the flag id byte at +4). Found by
 // clearing/setting flags live during the loop (Research_Notes,
 // save-flags-and-unlocks.md); confirmed in game.
-static const uintptr_t kTvUnlockFlagId = 0x3d5230;
+static const uintptr_t kTvUnlockFlagId = 0x3d54e0;
 static const uint8_t kTvUnlockFlagIdCode[] = {0xC7, 0x44, 0x24, 0x38, 0x22, 0x00, 0x00, 0x00};
 static const uint8_t kTvPlacedFlag = 80;  // PUT_CONTONTOTV
 
-// Parallel quest details (quest detail builder 0x59e660, TMQ branch) show
+// Parallel quest details (quest detail builder 0x59f1b0, TMQ branch) show
 // condition lines 2 and 3 (quest msg kinds 4 and 5) only when the quest
 // object's vt+0x58 value is >= 2 / >= 3, else msg QUE_STR_10_000 ("???").
-// The two jl's that pick "???" (cmp eax,2 / jl at 0x59f397, cmp eax,3 / jl
-// at 0x59f406) are NOPed, so the real text always shows. Found by reverse
+// The two jl's that pick "???" (cmp eax,2 / jl at 0x59fee7, cmp eax,3 / jl
+// at 0x59ff56) are NOPed, so the real text always shows. Found by reverse
 // engineering the game (Research_Notes, lobby-quests-and-shops.md).
-static const uintptr_t kConditionChecks[] = {0x59f394, 0x59f403};
+static const uintptr_t kConditionChecks[] = {0x59fee4, 0x59ff53};
 static const uint8_t kConditionCheckCode[2][5] = {{0x83, 0xF8, 0x02, 0x7C, 0x34}, {0x83, 0xF8, 0x03, 0x7C, 0x44}};
 
 // Online room (ROOM.iggy, Menu::RoomUI) countdown: the room's event handler
-// 0x5cf900 starts the 60 s room timer (0x5dc5b0, seconds in edx) on events 1
-// and 3 - event 3 is queued (0x475cb4) when a member's ready flag
+// 0x5d0430 starts the 60 s room timer (0x5dd0e0, seconds in edx) on events 1
+// and 3 - event 3 is queued (0x4765e4) when a member's ready flag
 // (member+0x149) is set - in room modes 4/5/9/12 with 2+ members. When it
-// runs out (0x5dc580) everyone is sent on. The host sends everyone on by
-// itself once all are ready (0x5cf7d0 -> all-ready check 0x472610), so the
-// timer is never started instead: the jb at 0x5cfa2c that skips the start for
-// fewer than 2 members becomes a jmp to the same target (0x5cfb79; nop + e9,
+// runs out (0x5dd0b0) everyone is sent on. The host sends everyone on by
+// itself once all are ready (0x5d0300 -> all-ready check 0x472f40), so the
+// timer is never started instead: the jb at 0x5d055c that skips the start for
+// fewer than 2 members becomes a jmp to the same target (0x5d06a9; nop + e9,
 // the rel32 0x147 stays). Found by reverse engineering the game
 // (Research_Notes, lobby-quests-and-shops.md "Online room countdown").
-static const uintptr_t kRoomTimerCheck = 0x5cfa29;
+static const uintptr_t kRoomTimerCheck = 0x5d0559;
 static const uint8_t kRoomTimerCheckCode[] = {0x83, 0xF8, 0x02, 0x0F, 0x82, 0x47, 0x01, 0x00, 0x00,
                                               0xBA, 0x3C, 0x00, 0x00, 0x00};  // cmp eax,2 / jb / mov edx,60
 // The 15 s countdown of the other room modes (1/2/6-8/11/15/18-22, e.g.
-// Parallel Quests): network message 6 (P2P handler 0x475640, case at
-// 0x475b65) queues event 5, whose case picks the mode through a byte table
-// (0x5cfc78) and reaches "mov edx,15" at 0x5cfb6c before the shared Start
-// call. That mov becomes "jmp 0x5cfb79" (eb 0b + 3 nops), past the call.
-// Only the byte table jumps to 0x5cfb6c; the 60 s path enters at 0x5cfb71.
-static const uintptr_t kRoomShortTimerStart = 0x5cfb6c;
+// Parallel Quests): network message 6 (P2P handler 0x475f70, case at
+// 0x476495) queues event 5, whose case picks the mode through a byte table
+// (0x5d07a8) and reaches "mov edx,15" at 0x5d069c before the shared Start
+// call. That mov becomes "jmp 0x5d06a9" (eb 0b + 3 nops), past the call.
+// Only the byte table jumps to 0x5d069c; the 60 s path enters at 0x5d06a1.
+static const uintptr_t kRoomShortTimerStart = 0x5d069c;
 static const uint8_t kRoomShortTimerStartCode[] = {0xBA, 0x0F, 0x00, 0x00, 0x00,   // mov edx,15
                                                    0x48, 0x8B, 0xCE,               // mov rcx,rsi
-                                                   0xE8, 0x37, 0xCA, 0x00, 0x00};  // call Start 0x5dc5b0
+                                                   0xE8, 0x37, 0xCA, 0x00, 0x00};  // call Start 0x5dd0e0
 
 static bool CodeIs(uintptr_t rva, const uint8_t* code, size_t n)
 {
@@ -1280,7 +1445,7 @@ static bool WaitForAllReady()
         !CodeIs(kRoomShortTimerStart, kRoomShortTimerStartCode, sizeof(kRoomShortTimerStartCode)))
         return false;  // not decrypted yet
     if (g_cfg.waitForAllReady) {
-        static const uint8_t skipStart[] = {0xEB, 0x0B, 0x90, 0x90, 0x90};  // jmp 0x5cfb79 (past the Start call)
+        static const uint8_t skipStart[] = {0xEB, 0x0B, 0x90, 0x90, 0x90};  // jmp 0x5d06a9 (past the Start call)
         if (PatchCode(kRoomShortTimerStart, skipStart, sizeof(skipStart)))
             Log("room countdown (15 s): off, rooms wait until everyone is ready (%.0f ms after start)",
                 MsSinceStart());
@@ -1301,36 +1466,36 @@ static bool WaitForAllReady()
 
 // ------------------------------------------------- HUD transform stages ---
 // The battle HUD's awoken skill panel names one stage (BHD_MET_<ID2>_<n>).
-// fn 0x15e230 picks it for slot 8 at 0x160370-0x160436: the highest stage
+// fn 0x15e2f0 picks it for slot 8 at 0x160430-0x1604f6: the highest stage
 // whose Ki requirement the character can afford now. Every x2m aura has
 // KI_REQ 0, so an x2m transformation always names its top stage (New
 // Transformations' Super Saiyan All: "Ultra Instinct" on every stage). The
-// result (edi; -1 = nothing above the current stage) meets at 0x160436 on
+// result (edi; -1 = nothing above the current stage) meets at 0x1604f6 on
 // every path; a cave there replaces it, for skills whose CUS stages are all
 // pre-baked (x2m), with the stage the skill button goes to now: the first
 // transform entry of the skill's BCM (file order) above the current stage
 // whose Ki/HP gates pass, -1 if none (hud_stages.h NextStageToName).
 // Vanilla skills keep the game's choice. XV2Patcher
-// patches 0x1603a1/0x1603b0 and 0x11ffc0, none of the bytes used here.
+// patches 0x160461/0x160470 and 0x120080, none of the bytes used here.
 // Found by reverse engineering the game (Research_Notes, new-transformations.md "Which stage the HUD
 // names").
-static const uintptr_t kHudStagePicked = 0x160436;
+static const uintptr_t kHudStagePicked = 0x1604f6;
 static const uint8_t kHudStagePickedCode[] = {0xF6, 0x86, 0xB0, 0x00, 0x00, 0x00, 0x10,  // test byte [rsi+0xb0],0x10
-                                              0x74, 0x1A,                                // je 0x160459
+                                              0x74, 0x1A,                                // je 0x160519
                                               0x41, 0x81, 0xFD, 0xAD, 0x61, 0x00, 0x00,  // cmp r13d,25005
-                                              0x75, 0x11};                               // jne 0x160459
-static const uintptr_t kHudStageAfterTest = 0x160459, kHudStageAfterCmp = 0x160446;
+                                              0x75, 0x11};                               // jne 0x160519
+static const uintptr_t kHudStageAfterTest = 0x160519, kHudStageAfterCmp = 0x160506;
 static const Sig kHudStageSigs[] = {
-    {0x16004a, "44 0F BF 6B 08"},                 // r13d = the slot's skill id
-    {0x160370, "0F BF 5B 3C 89 5D B0"},           // [rbp-0x50] = CUS Num_Of_Transforms
-    {0x160377, "48 8B CE E8 41 FC FB FF"},        // rsi = the character: stage getter 0x11ffc0(rsi)
+    {0x16010a, "44 0F BF 6B 08"},                 // r13d = the slot's skill id
+    {0x160430, "0F BF 5B 3C 89 5D B0"},           // [rbp-0x50] = CUS Num_Of_Transforms
+    {0x160437, "48 8B CE E8 41 FC FB FF"},        // rsi = the character: stage getter 0x120080(rsi)
     {0xc8bb0, "8B 81 EC 22 00 00 C3"},            // current aura = [character+0x22ec]
 };
-static const uintptr_t kCharTransformFlags = 0xb0;  // byte; 0x10 = transformed (0x11ffc0, 0x160436)
+static const uintptr_t kCharTransformFlags = 0xb0;  // byte; 0x10 = transformed (0x120080, 0x1604f6)
 static const uint8_t kCharTransformed = 0x10;
 static const uintptr_t kCharAura = 0x22ec;          // cus aura id (getter 0xc8bb0; XV2Patcher's pre-baked ids)
-// Float Ki and HP: 0xc66a0 compares a Ki cost <= [char+0x10c]; 0xcfdf0 /
-// 0xcfe30 read current HP [+0x100] against max HP [+0x104]. Not yet
+// Float Ki and HP: 0xc66a0 compares a Ki cost <= [char+0x10c]; 0xcfeb0 /
+// 0xcfef0 read current HP [+0x100] against max HP [+0x104]. Not yet
 // confirmed on the HUD's character - the "hud stage" log line prints them.
 static const uintptr_t kCharHealth = 0x100, kCharMaxHealth = 0x104, kCharKi = 0x10c;
 
@@ -1453,7 +1618,7 @@ static bool HudStageNames()
     AbsJmp(at, g_base + kHudStageAfterTest); at += 14;
     emit({0x41, 0x81, 0xFD, 0xAD, 0x61, 0x00, 0x00});                          // cmp r13d,25005
     AbsJmp(at, g_base + kHudStageAfterCmp);
-    // Site: jmp cave, then nops up to 0x160446 (never reached).
+    // Site: jmp cave, then nops up to 0x160506 (never reached).
     uint8_t code[16];
     memset(code, 0x90, sizeof(code));
     code[0] = 0xE9;
@@ -1467,12 +1632,12 @@ static bool HudStageNames()
 }
 
 // ---------------------------------------------------------------- flight ---
-// 0x84b380 = "can fly": SYSFLAG 16 UNLOCK_Buku || 0x826bd0(account manager,
-// 2). Its only caller (0x4b046c, lobby player update 0x4b03a0) sets bit
+// 0x859490 = "can fly": SYSFLAG 16 UNLOCK_Buku || 0x834c10(account manager,
+// 2). Its only caller (0x4b0d9c, lobby player update 0x4b0cd0) sets bit
 // 0x1000 "flight locked" in [player+0x3c8] when it returns 0. It becomes
 // "mov eax,1; ret", so the save's flags stay as they are. Found by reverse
 // engineering the game (Research_Notes, save-flags-and-unlocks.md "Flight").
-static const uintptr_t kCanFly = 0x84b380;
+static const uintptr_t kCanFly = 0x859490;
 static const uint8_t kCanFlyCode[] = {0x48, 0x89, 0x5C, 0x24, 0x10,  // mov [rsp+0x10],rbx
                                       0x57,                          // push rdi
                                       0x48, 0x83, 0xEC, 0x20};       // sub rsp,0x20
@@ -1490,19 +1655,19 @@ static bool FlightAlwaysAllowed()
 }
 
 // ---------------------------------------------------------- dragon balls ---
-// 0x848bf0(type, id, flags) = how many of an item the loaded character holds
-// (types 0..9: the inventory list's count, 0x82d340). The Shenron script
+// 0x856d00(type, id, flags) = how many of an item the loaded character holds
+// (types 0..9: the inventory list's count, 0x83b450). The Shenron script
 // (dragon_ball.tsr CALL_DRAGON: ITEM(7,1..7)>=1, expression handler call at
-// 0x3c9d54) and the wish (0x4f1db0) both ask it. The wish counts the balls
+// 0x3ca004) and the wish (0x4f2890) both ask it. The wish counts the balls
 // held, reports 7 - held to the network/telemetry side as balls bought with
-// STP medals (event 0x31, 0x6a2730 -> 0x72b1c0), then takes balls 1..7
-// (0x847d30 -> remove 0x82cf70, which just returns 0 for a ball not held).
+// STP medals (event 0x31, 0x6a66d0 -> 0x733c90), then takes balls 1..7
+// (0x855e40 -> remove 0x83b080, which just returns 0 for a ball not held).
 // So the count, not the inventory, is changed: balls 1..7 (type 7
 // "important", one each) always count 1 - the wish reports 0 bought, like a
 // normal wish, and nothing is given or written to the save. Found by reverse
 // engineering the game (Research_Notes, save-flags-and-unlocks.md "Dragon
 // Balls").
-static const uintptr_t kItemCount = 0x848bf0;
+static const uintptr_t kItemCount = 0x856d00;
 static const uint8_t kItemCountCode[] = {0x48, 0x89, 0x5C, 0x24, 0x08,   // mov [rsp+8],rbx
                                          0x48, 0x89, 0x74, 0x24, 0x10};  // mov [rsp+0x10],rsi
 static const int kImportantItemType = 7, kFirstDragonBall = 1, kLastDragonBall = 7;
@@ -1526,25 +1691,25 @@ static bool AllDragonBalls()
     return true;
 }
 
-// Lobby flight speed. PhysChar@Lobby's step (0x4b3c60, rbx = the PhysChar,
+// Lobby flight speed. PhysChar@Lobby's step (0x4b4590, rbx = the PhysChar,
 // [rbx+0x10] = its character) turns the step's move delta into a velocity:
-// delta * (1/dt) * xmm10 (0x4b3e84). xmm10 is 1, or 0.025 when |delta|^2 >
-// 1.5 (a teleport guard, 0x4b3d51); every path meets at 0x4b3d63. A cave
-// there multiplies xmm10 for the local lobby player only ([exe+0x15712f8] =
+// delta * (1/dt) * xmm10 (0x4b47b4). xmm10 is 1, or 0.025 when |delta|^2 >
+// 1.5 (a teleport guard, 0x4b4681); every path meets at 0x4b4693. A cave
+// there multiplies xmm10 for the local lobby player only ([exe+0x15851d8] =
 // CLobbyPlayer, +0x5b0 = its PhysChar) while airborne (character +0x3b4
-// bits 0xc, set by 0x4868b0 above 0.5 height). Scaling after the guard keeps
+// bits 0xc, set by 0x4871e0 above 0.5 height). Scaling after the guard keeps
 // the guard from seeing the faster speed (Revamp's x1.4 lobby.bac boost
 // stalls every few seconds). Battle uses another class. Found by reverse
 // engineering the game (Research_Notes, lobby-physics-and-debug-menu.md
 // "Flight speed").
-static const uintptr_t kLobbyStepJoin = 0x4b3d63, kLobbyStepAfterJoin = 0x4b3d6c;
+static const uintptr_t kLobbyStepJoin = 0x4b4693, kLobbyStepAfterJoin = 0x4b469c;
 static const uint8_t kLobbyStepJoinCode[] = {0x48, 0x8B, 0x4B, 0x10,         // mov rcx,[rbx+0x10]
                                              0xBF, 0x01, 0x00, 0x00, 0x00};  // mov edi,1
-static const uintptr_t kLobbyPlayer = 0x15712f8;   // CLobbyPlayer*
+static const uintptr_t kLobbyPlayer = 0x15851d8;   // CLobbyPlayer*
 static const int32_t kLobbyPlayerPhysics = 0x5b0;  // CLobbyPlayer +0x5b0 = PhysChar@Lobby*
 static const Sig kLobbyStepSigs[] = {
-    {0x4b3d5a, "F3 44 0F 10 15"},  // movss xmm10,[0.025] (the guard)
-    {0x4b3d76, "8B 83 F0 00 00 00"},  // mov eax,[rbx+0xf0]: rax is free in the cave
+    {0x4b468a, "F3 44 0F 10 15"},  // movss xmm10,[0.025] (the guard)
+    {0x4b46a6, "8B 83 F0 00 00 00"},  // mov eax,[rbx+0xf0]: rax is free in the cave
 };
 
 // Returns true once done (or impossible).
@@ -1650,8 +1815,8 @@ static void BootTweaks()
     if (!dragonBalls) Log("dragon balls: code never matched - left as is");
 }
 
-// Options are bytes at manager + 8 + 0x8c + 4 + id (getter 0x8247f0 ->
-// 0x829750); the volume ones are levels 0..5. At the title they hold the
+// Options are bytes at manager + 8 + 0x8c + 4 + id (getter 0x832790 ->
+// 0x837860); the volume ones are levels 0..5. At the title they hold the
 // defaults (5) and the character slot already reads as valid (seen in game),
 // so they count as the save's only once the sound system plays at exactly
 // those levels: the game has applied them (on Start), and the title's own
@@ -1698,7 +1863,7 @@ static void RememberVolume()
 // along the line to its interest point by the mode's zoom.
 //
 // The game itself also looks through the camera it handed over: the lobby
-// culls characters with that camera's view and projection (0x3c3070), battle
+// culls characters with that camera's view and projection (0x3c32f0), battle
 // places the name plates and the lock-on marker with them (0xba15e). So that
 // camera's view matrix is zoomed too: xgcore's EmCamera::calcViewMatrix is
 // hooked and, for that camera only, computes the view from a zoomed copy of
@@ -1706,27 +1871,27 @@ static void RememberVolume()
 // logic that reads it back ever sees the zoom (nothing feeds back).
 //
 // The mode is the call site (return address):
-//   battle    0x15d650 / 0x166470 / 0x16cf10 (Battle::CameraManager's current
-//             camera, 0x156b408), 0xe4080 (Mob)
-//   lobby     0x3f4db0 (Lobby JobCallbackUpdateTail) and 0x457250
-//             (MatchingLobby): Lobby::CameraManager (0x15712e8) +0x20
-//   menu      0x665bf0 (Menu::Camera: character select / creation)
-//   cutscene  0x2b05a0 .. 0x2b2370 and 0x3759f0 / 0x377540 (demo playback)
+//   battle    0x15d710 / 0x166530 / 0x16cfd0 (Battle::CameraManager's current
+//             camera, 0x157f168), 0xe4140 (Mob)
+//   lobby     0x3f5090 (Lobby JobCallbackUpdateTail) and 0x457b70
+//             (MatchingLobby): Lobby::CameraManager (0x15851c8) +0x20
+//   menu      0x669ac0 (Menu::Camera: character select / creation)
+//   cutscene  0x2b06c0 .. 0x2b2490 and 0x375c70 / 0x3777c0 (demo playback)
 // Not zoomed: the loading screens (LoadQuest, LoadVs, LoadVsGBB,
-// TtlLoadVsCore) and Menu::Camera's restore of a saved scene camera (0x6648c0).
+// TtlLoadVsCore) and Menu::Camera's restore of a saved scene camera (0x668790).
 struct CallSite { uintptr_t ret; CamMode mode; };
 static const CallSite kMainSites[] = {
-    {0x15d73c, kModeBattle}, {0x1664d9, kModeBattle}, {0x16cf6f, kModeBattle}, {0xe41d1, kModeBattle},
-    {0x3f4f05, kModeLobby}, {0x4573a9, kModeLobby},
-    {0x665c9a, kModeMenu},
-    {0x2b0bb3, kModeCutscene}, {0x2b14b4, kModeCutscene}, {0x2b1f64, kModeCutscene}, {0x2b25d4, kModeCutscene},
-    {0x375aa3, kModeCutscene}, {0x37758a, kModeCutscene},
+    {0x15d7fc, kModeBattle}, {0x166599, kModeBattle}, {0x16d02f, kModeBattle}, {0xe4291, kModeBattle},
+    {0x3f51e5, kModeLobby}, {0x457cc9, kModeLobby},
+    {0x669b6a, kModeMenu},
+    {0x2b0cd3, kModeCutscene}, {0x2b15d4, kModeCutscene}, {0x2b2084, kModeCutscene}, {0x2b26f4, kModeCutscene},
+    {0x375d23, kModeCutscene}, {0x37780a, kModeCutscene},
 };
 static const CallSite kPrevSites[] = {
-    {0x15d753, kModeBattle}, {0x1664ef, kModeBattle}, {0x3f4eb4, kModeLobby}, {0x457354, kModeLobby},
-    {0x665c86, kModeMenu},
+    {0x15d813, kModeBattle}, {0x1665af, kModeBattle}, {0x3f5194, kModeLobby}, {0x457c74, kModeLobby},
+    {0x669b56, kModeMenu},
 };
-static const uintptr_t kIatSetMain = 0xf4d650, kIatSetPrev = 0xf4d700;  // DBXV2's import slots
+static const uintptr_t kIatSetMain = 0xf5b670, kIatSetPrev = 0xf5b720;  // DBXV2's import slots
 // xgcore.dll EmCamera::calcViewMatrix (0xf650): LookAt(position +0x90,
 // interest +0xa0, up +0xb0 or a default) + roll +0xc0 -> view matrix +0x10.
 static const char kCalcViewName[] = "?calcViewMatrix@EmCamera@Eva@XG@@IEBAXXZ";
@@ -1789,16 +1954,16 @@ static void __fastcall HkCalcViewMatrix(void* cam)
 }
 
 // Map object culling, run with the game's camera, also reads its position:
-// * 0x33b610 (once a frame, battle and lobby) builds world-space planes from
+// * 0x33b880 (once a frame, battle and lobby) builds world-space planes from
 //   the position, frustum and view, so with only the view zoomed it culled
 //   props near the screen edges;
-// * 0x31dd70 (each draw list, from 0x338e20) hides objects behind the plane
+// * 0x31dfe0 (each draw list, from 0x339090) hides objects behind the plane
 //   through the position, facing the interest - props near the camera at
 //   the screen edges are behind the game's position but in front of the
 //   zoomed one.
 // Given the zoomed camera, both get a copy of it with the position zoomed
 // instead. Neither keeps a pointer to the camera.
-static const uintptr_t kCull = 0x33b610, kCullBehind = 0x31dd70;
+static const uintptr_t kCull = 0x33b880, kCullBehind = 0x31dfe0;
 static const uint8_t kCullCode[] = {0x48, 0x8B, 0xC4, 0x55, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57};
 static const uint8_t kCullBehindCode[] = {0x48, 0x89, 0x5C, 0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20, 0x41, 0x56};
 typedef uint64_t(__fastcall* CullFn)(void* cam, float f, void* r8, void* r9);
@@ -1942,7 +2107,7 @@ static DWORD WINAPI CameraThread(LPVOID)
     }
     if (!sites || !InstallCameraHooks()) {
         Log("camera zoom: NOT installed (%.0f ms): %s", MsSinceStart(),
-            sites ? "render_pass_x64.dll / xgcore.dll not as expected" : "code does not match game 1.26.01");
+            sites ? "render_pass_x64.dll / xgcore.dll not as expected" : "code does not match game 1.27");
         return 0;
     }
     AcquireSRWLockExclusive(&g_savedLock);
@@ -2003,16 +2168,21 @@ static DWORD WINAPI ThreadMain(LPVOID)
 
     bool known = false;
     for (int i = 0; i < 2000 && !known; ++i) {
-        known = IsGame12601();
+        known = IsSupportedGame();
         if (!known) Sleep(5);
     }
     if (!known) { Log("unknown game version - nothing is changed"); return 0; }
 
     if (g_cfg.teleports || g_cfg.storyFlags || g_cfg.parallelQuests || g_cfg.expertMissions ||
-        g_cfg.tpShop || g_cfg.logFiles || g_cfg.npc.enabled || g_cfg.mentorNames) {
+        g_cfg.tpShop || g_cfg.logFiles || g_cfg.npc.enabled || g_cfg.mentorNames ||
+        g_cfg.freeAttributePoints) {
         bool ok = InstallFileHook();
         Log(ok ? "file hook installed at %.0f ms" : "file hook NOT installed (%.0f ms)", MsSinceStart());
     }
+    // Before BootTweaks, which waits for the title screen: the game reads
+    // lobby_text_<lang>.msg ~6 s in, and a file read before this falls back
+    // to the file hook's edit outside the UI library's pipeline (log 2026-10-19).
+    if (g_cfg.npc.enabled) RegisterNpcMessages();
     if (g_cfg.cameraZoom)
         if (HANDLE t = CreateThread(nullptr, 0, CameraThread, nullptr, 0, nullptr)) CloseHandle(t);
     if (g_cfg.skipLogos || g_cfg.skipIntro || g_cfg.titleVolume || g_cfg.fixTvLobbyLoop ||
@@ -2020,6 +2190,7 @@ static DWORD WINAPI ThreadMain(LPVOID)
         g_cfg.flight || g_cfg.lobbyFlightSpeed != 1.0f || g_cfg.allDragonBalls)
         BootTweaks();
     if (g_cfg.npc.enabled) InstallReplayMenu();
+    if (g_cfg.npc.enabled && !g_cfg.npc.menuTitle.empty()) RegisterTitleArtImages();
     if (g_cfg.mentorNames) InstallMapNames();
     bool flags = g_cfg.teleports || g_cfg.storyFlags || g_cfg.expertMissions || g_cfg.levelCap ||
                  g_cfg.raidCharacters;

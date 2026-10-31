@@ -5,6 +5,7 @@ rem   build.bat            incremental Release build
 rem   build.bat clean      wipe the build folder first
 rem   build.bat install    build, then install into XV2 Mod Loader's mods folder
 rem   build.bat uninstall  remove General_QoL.dll (your config is kept)
+rem   build.bat release    build, then write ..\..\_Releases\General_QoL-<VERSION>-XV2_<GAME_VERSION>.zip (extract into the game folder)
 rem
 rem The game folder is %XV2_GAME% if set, otherwise Steam's own library.
 setlocal
@@ -32,6 +33,7 @@ cmake --build "%OUT%" --config Release || (echo. & echo BUILD FAILED & exit /b 1
 echo.
 echo Built: %OUT%\Release\General_QoL.dll
 
+if /i "%~1"=="release" goto release
 if /i not "%~1"=="install" exit /b 0
 call :checkgame || exit /b 1
 if not exist "%GAME%\XV2ModLoader" (
@@ -44,6 +46,29 @@ copy /y "%OUT%\Release\General_QoL.dll" "%MOD%\" >nul || exit /b 1
 if not exist "%MOD%\general_qol.json" copy "%SRC%general_qol.json" "%MOD%\" >nul
 echo Installed: %MOD%\General_QoL.dll
 echo Config:    %MOD%\general_qol.json
+exit /b 0
+
+:release
+rem The zip mirrors the game folder: XV2ModLoader\mods\General_QoL\ with the DLL,
+rem the default config, the README and VERSION. Staged in build\package
+rem (not build\release: paths ignore case, that is build\Release with the DLL).
+set "STAGE=%OUT%\package"
+set "PKG=%STAGE%\XV2ModLoader\mods\General_QoL"
+rem The VERSION file names the zip and ships in the mod folder (CHANGELOG.md);
+rem GAME_VERSION (repo root) is the game version the build is for.
+set /p VERSION=<"%SRC%VERSION"
+set /p GAME_VERSION=<"%SRC%..\GAME_VERSION"
+set "ZIP=%SRC%..\..\_Releases\General_QoL-%VERSION%-XV2_%GAME_VERSION%.zip"
+if exist "%STAGE%" rmdir /s /q "%STAGE%"
+mkdir "%PKG%" || exit /b 1
+copy /y "%OUT%\Release\General_QoL.dll" "%PKG%\" >nul || exit /b 1
+copy /y "%SRC%general_qol.json" "%PKG%\" >nul || exit /b 1
+copy /y "%SRC%README.md" "%PKG%\" >nul || exit /b 1
+copy /y "%SRC%VERSION" "%PKG%\" >nul || exit /b 1
+if not exist "%SRC%..\..\_Releases" mkdir "%SRC%..\..\_Releases"
+if exist "%ZIP%" del "%ZIP%"
+powershell -NoProfile -Command "Compress-Archive -Path '%STAGE%\XV2ModLoader' -DestinationPath '%ZIP%'" || exit /b 1
+echo Release: %ZIP%
 exit /b 0
 
 :uninstall

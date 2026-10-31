@@ -1,10 +1,12 @@
 # Chara Search
 
+**Version 1.1.0** · for Dragon Ball Xenoverse 2 **1.27** · needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
+
 Search and favorites for the character select grid in Dragon Ball Xenoverse 2.
 Type part of a character's name or code to filter the grid. Favorites are
 listed right after your own CaC.
 
-A Lua script for [XV2 Mod Loader](../XV2ModLoader) (game version 1.26.01).
+A Lua script for [XV2 Mod Loader](../XV2ModLoader) (game version 1.27).
 
 ## Installing
 

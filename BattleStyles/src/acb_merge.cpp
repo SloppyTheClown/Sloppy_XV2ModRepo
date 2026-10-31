@@ -410,10 +410,10 @@ const uint16_t kCommandBeatSync = 0x0071;        // u16, u16 BeatSyncInfoTable r
 // Cue limit: u16 limit, u16 cue limit work area [, u8]. The work area is an
 // index into an array the bank's header sizes (NumCueLimitListWorks, nodes
 // NumCueLimitNodeWorks); found by reverse engineering the exe's CRI command
-// interpreter (1.26.01: 0x9cbca0 dispatches both codes to 0x9ccd2d, which
-// hands the work index to 0x9b814c). An index past the array reads garbage:
+// interpreter (1.27: 0x9d9b40 dispatches both codes to 0x9dabcd, which
+// hands the work index to 0x9c5fec). An index past the array reads garbage:
 // CAR_BTL_FIO_SE's cue (limit 1, work 0) merged into CAR_BTL_NMC_SE (0
-// works) crashed the game at 0x9bba67.
+// works) crashed the game at 0x9c9907.
 const uint16_t kCommandCueLimit = 0x0049;
 const uint16_t kCommandCueLimit2 = 0x004f;
 
@@ -510,7 +510,7 @@ bool MergeAcb(const uint8_t* race, size_t raceSize, const uint8_t* style, size_t
     // ClaudeTools\battle_styles\acbcuelimit.py). The race's own buffer stays empty
     // when it has no works, so without this the style's work areas point past
     // it: GAL merged into HUM crashed in Training (strlen(NULL) in the CRI
-    // play logging at 0x9af298 for cue 53).
+    // play logging at 0x9bd138 for cue 53).
     {
         const uint64_t works = Number(raceBank.top, 0, "NumCueLimitListWorks") +
                                Number(raceBank.top, 0, "NumCueLimitNodeWorks");

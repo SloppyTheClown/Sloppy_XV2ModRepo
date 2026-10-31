@@ -12,9 +12,9 @@ void Log(const char* format, ...);
 // "[LUA_NAME] TYPE: text" to the Lua console and loader.log.
 void ScriptOutput(lua_State* state, int type, const std::string& text);
 
-// True when the running exe is DBXV2.exe 1.26.01 (PE TimeDateStamp and
+// True when the running exe is DBXV2.exe 1.27 (PE TimeDateStamp and
 // SizeOfImage; the same check as the DLL mods).
-bool IsGame12601();
+bool IsSupportedGame();
 
 // The script's name (its LUA_NAME global; "Lua" without one): the owner of
 // its file patches and menu callbacks.

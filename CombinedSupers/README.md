@@ -1,5 +1,7 @@
 # Combined Super Stats
 
+**Version 1.1.0** · for Dragon Ball Xenoverse 2 **1.27** · loader version needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
+
 A Dragon Ball Xenoverse 2 mod that makes **super and ultimate attacks scale off
 your combined Strike Supers + Ki Blast Supers investment**, instead of each
 attack type using only its own stat.
@@ -12,7 +14,7 @@ of the equation, so Weight and Height become purely cosmetic.
 It applies to every Custom Character (CaC) in a fight, at any level —
 yours, other players', and NPCs. Roster characters are not changed.
 
-For game version **1.26.01**. Works alongside XV2Patcher.
+For game version **1.27**. Works alongside XV2Patcher.
 
 ---
 
@@ -88,8 +90,8 @@ per-character factor first. **Your stats themselves are never changed** — the
 character sheet, basic attacks and defence all see the real values; only super
 and ultimate damage sees the combined one.
 
-A background thread finds every CaC in the fight and works out their build
-from their live stats. Every CaC stat follows
+Whenever the game updates a CaC's stats, the mod works out that character's
+build from the new values. Every CaC stat follows
 
 ```
 stat = G(level) * (1 + body type + points/500)
@@ -104,9 +106,8 @@ Everything it uses is something every player's game already has: race, body
 type, level and the live stats. Two players running the mod compute exactly the
 same numbers for every character. It never reads save files.
 
-Characters are identified as a fight loads. In the first fight after starting
-the game this can take until a character's first super, so that one super can
-land partly unboosted. Every later fight is boosted from the first hit.
+With XV2 Mod Loader, Customize > Attributes also shows Strike Supers and Ki
+Blast Supers together in one "Supers" box with their combined total.
 
 ---
 

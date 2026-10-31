@@ -5,7 +5,7 @@ rem   build.bat            incremental Release build
 rem   build.bat clean      wipe the build folder first
 rem   build.bat install    build, then install into XV2 Mod Loader's mods folder
 rem   build.bat uninstall  remove SaveSync.dll (your config and toggles are kept)
-rem   build.bat release    build, then write ..\..\_Releases\SaveSync-<VERSION>.zip (extract into the game folder)
+rem   build.bat release    build, then write ..\..\_Releases\SaveSync-<VERSION>-XV2_<GAME_VERSION>.zip (extract into the game folder)
 rem
 rem The game folder is %XV2_GAME% if set, otherwise Steam's own library.
 setlocal
@@ -56,7 +56,8 @@ rem build\release: paths ignore case, that is build\Release with the DLL).
 set "STAGE=%OUT%\package"
 rem The VERSION file names the zip and ships in the mod folder (CHANGELOG.md).
 set /p VERSION=<"%SRC%VERSION"
-set "ZIP=%SRC%..\..\_Releases\SaveSync-%VERSION%.zip"
+set /p GAME_VERSION=<"%SRC%..\GAME_VERSION"
+set "ZIP=%SRC%..\..\_Releases\SaveSync-%VERSION%-XV2_%GAME_VERSION%.zip"
 if exist "%STAGE%" rmdir /s /q "%STAGE%"
 mkdir "%STAGE%\XV2ModLoader\mods\SaveSync" || exit /b 1
 copy /y "%OUT%\Release\SaveSync.dll" "%STAGE%\XV2ModLoader\mods\SaveSync\" >nul || exit /b 1

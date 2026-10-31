@@ -43,7 +43,7 @@ int ParseAuraStages(const std::string& xml, AuraStages& out);
 // BAC/Parser.cs (ClaudeTools\XV2-Tools).
 bool ParseBcmChain(const std::string& bcm, const std::string& bac, std::vector<ChainEntry>& out);
 
-// Awoken skill ids are 25000 + ID2 (the HUD's name lookup 0x1c1cc0 takes
+// Awoken skill ids are 25000 + ID2 (the HUD's name lookup 0x1c1d80 takes
 // id % 25000 for BHD_MET_<ID2>_<stage>).
 const int kAwokenSkillBase = 25000;
 

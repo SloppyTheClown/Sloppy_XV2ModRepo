@@ -12,12 +12,12 @@ and categories. Game 1.26.01. Read before any sound question.
    present every time is the one. Footsteps / text blips repeat every ~0.3 s.
 
 ## Layout
-* Sound::System* = global `[0x1554490]` (snd). Live sound objects:
+* Sound::System* = global `[0x15681f0]` (snd). Live sound objects:
   std::vector<SoundObject*> at snd+0x18bd0 / +0x18bd8. SoundObject: +8 bank
   slot (getter 0x43140), +0x28 cue id, +0x20 bank handle whose +0 points to
   the .awb path.
 * Bank table: snd+0x1e00 + slot*0x88 (+8 inline name for some slots only; use
-  the handle path). Load 0x3630a0(snd, slot, path, flag), unload 0x3640d0;
+  the handle path). Load 0x363320(snd, slot, path, flag), unload 0x3640d0;
   lobby banks at 0x442ab8.. (CAR_LOBBY_MENU/AMB/CHARA_SE, CAR_LBY_MSCT_SE,
   VOX/Quest/TMQ/CAQR_ALL_VOX).
 * .acb loads go through the file request class, so the file hook can edit
@@ -37,7 +37,7 @@ and categories. Game 1.26.01. Read before any sound question.
 * The code (DST, MST) is NOT the model's CMS code and is in no data file (TNL,
   TSD, scripts, msg, cms, chara_sound.cso). Changing the NPC's model does not
   change its voice.
-* Builder 0x7b3e40 (plays via 0x80d420, rcx=[[0x1554458]+0x948], edx=0x146),
+* Builder 0x7b3e40 (plays via 0x80d420, rcx=[[0x15681b8]+0x948], edx=0x146),
   called from 0x7b4230, slot 14 of QuestNpcObject / QuestNpcCharaAnimObject /
   QuestShenronObject; code from [obj+0xc8]+0x18 (chara id) -> 0x28fea0
   (table 0x15544d8, code at entry+4). How the lobby's Dastar gets DST was not
@@ -50,10 +50,10 @@ and categories. Game 1.26.01. Read before any sound question.
 
 ## Volume options and categories
 * Category volumes: floats at snd+0x1a404 (5 categories); SetCategoryVolume
-  0x363d10(snd, cat, vol). ApplyOptionVolumes 0x8479e0: cat 0 <- option 3,
-  cat 2 <- option 4, cat 1 <- option 5; level 0..5 via table 0x10d3178 (0.0,
-  0.2 .. 1.0). Options = bytes at mgr+8+0x8c+4+id (0x8247f0 -> 0x829750),
-  mgr = [0x15545b0].
+  0x363f90(snd, cat, vol). ApplyOptionVolumes 0x855af0: cat 0 <- option 3,
+  cat 2 <- option 4, cat 1 <- option 5; level 0..5 via table 0x10e1c38 (0.0,
+  0.2 .. 1.0). Options = bytes at mgr+8+0x8c+4+id (0x832790 -> 0x837860),
+  mgr = [0x1568310].
 * Cat 0 = BGM: title music (cue 29) and the intro movie's sound follow it.
   Confirmed live (lobby): options 0/1/2 -> cat 0 0.0, cat 1 0.4, cat 2 0.2.
 * At the title the options are defaults (5) - the save's options load on
@@ -67,7 +67,7 @@ and categories. Game 1.26.01. Read before any sound question.
   +12 (0x10); 32-byte entries: chara i32, costume u32, then SE, VOX, AMK,
   skill string offsets (absolute u32, 0 = none), 8 bytes padding
   (Xv2CoreLib CSO/CSO_File.cs). CaCs 100-107 get CAR_BTL_<RACE>_SE (SYM none).
-* Bank load: 0x298e14 in 0x298c70 calls 0x3630a0(sound manager, slot,
+* Bank load: 0x298ed4 in 0x298d30 calls 0x363320(sound manager, slot,
   "SE/Battle/Chara/<bank>", 0); the game builds "data/sound/" + path +
   ".acb" (loose files first). Details: battle-styles-sound-and-effects.md "Build 7".
 * **Merging two banks** (`BattleStyles\src\acb_merge.cpp`): ACB = top

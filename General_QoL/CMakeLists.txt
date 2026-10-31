@@ -17,9 +17,10 @@ file(READ ${CMAKE_CURRENT_SOURCE_DIR}/general_qol.json DEFAULT_CONFIG)
 configure_file(src/default_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/generated/default_config.h @ONLY)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS general_qol.json)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/generated)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../XV2ModLoader/sdk)  # xv2_files.h, xv2_ui.h: the loader's library
 
 # Loaded by XV2 Mod Loader from <game>\XV2ModLoader\mods\General_QoL\.
-add_library(General_QoL SHARED src/dllmain.cpp src/mod.cpp src/tsr.cpp src/data.cpp src/replay_npc.cpp src/json.cpp src/map_names.cpp src/hud_stages.cpp)
+add_library(General_QoL SHARED src/dllmain.cpp src/mod.cpp src/tsr.cpp src/data.cpp src/replay_npc.cpp src/json.cpp src/map_names.cpp src/iggy_abc.cpp src/hud_stages.cpp)
 set_target_properties(General_QoL PROPERTIES PREFIX "")
 
 if (MSVC)
@@ -30,5 +31,5 @@ endif()
 add_executable(tsrtest EXCLUDE_FROM_ALL tests/tsrtest.cpp src/tsr.cpp)
 add_executable(datatest EXCLUDE_FROM_ALL tests/datatest.cpp src/data.cpp)
 add_executable(npctest EXCLUDE_FROM_ALL tests/npctest.cpp src/replay_npc.cpp)
-add_executable(maptest EXCLUDE_FROM_ALL tests/maptest.cpp src/map_names.cpp)
+add_executable(maptest EXCLUDE_FROM_ALL tests/maptest.cpp src/map_names.cpp src/iggy_abc.cpp)
 add_executable(hudtest EXCLUDE_FROM_ALL tests/hudtest.cpp src/hud_stages.cpp)

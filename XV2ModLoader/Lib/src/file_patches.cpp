@@ -1,6 +1,12 @@
 // ---------------------------------------------------------------------------
 //  File patches - mods have the loader change game files as the game reads
-//  them, so nothing in data\ has to be replaced:
+//  them, so nothing in data\ has to be replaced.
+//
+//  Every patched file has a pipeline of stages, one or more per mod. The
+//  game's file goes in; each stage in turn gets the file as the stages
+//  before it left it, may change it, and passes it on; what comes out is
+//  what the game gets (like the systems of an entity component system
+//  taking turns on the same data). Kinds of stage:
 //
 //  * a whole file served from the mod's own copy (ReplaceFile);
 //  * a menu's ActionScript (AS3 ABC) swapped for the mod's own, only over
@@ -8,16 +14,19 @@
 //    the ClaudeTools\iggy\*_abc.py builders), so a menu another mod replaced is
 //    left alone (ReplaceIggyScript). A mod may register one script per
 //    original (e.g. vanilla CHARASELE and xv2patcher's): each original
-//    gets the script built from it.
+//    gets the script built from it;
+//  * a DLL mod's own function (AddStage) - e.g. XV2UserInterfaceLib's,
+//    which merges a mod's menu script edits into the current script.
+//
+//  The two Replace kinds are the old one-mod-per-file patches: they run
+//  first (they want the game's own file) and a second owner's is refused.
+//  AddStage stages stack in `order` (then registration) order.
 //
 //  Lua scripts use the "files" table; DLL mods the XV2Files_* exports
-//  (sdk\xv2_files.h). One patch per file: a second mod asking for a file
-//  that already has one is refused; the same owner asking again replaces
-//  its own patch (for a menu script: the one for the same original; one
-//  for another original is added).
+//  (sdk\xv2_files.h).
 //
-//  Every data file is read through a file request object (DBXV2.exe 1.26.01,
-//  vtable 0xf9b270; Research_Notes\exe-and-tooling.md "File request hook"):
+//  Every data file is read through a file request object (DBXV2.exe 1.27,
+//  vtable 0xfa92f0; Research_Notes\exe-and-tooling.md "File request hook"):
 //  slots 3/4 return the file's data, 6/7 its size, and the path is inline at
 //  +8. Other mods (General_QoL, BattleStyles, ...) repoint the same four slots and
 //  chain: whatever a slot holds is called through, under the named mutex
@@ -27,10 +36,13 @@
 //
 //  Mods register on the render thread (Lua) or any thread (DLLs), the game
 //  requests files on its loading threads: the registrations sit behind one
-//  SRWLOCK, the hook installation behind another.
+//  SRWLOCK, the hook installation behind another. Stages run without the
+//  lock held, on a copy of the pipeline, so a slow one blocks no other file.
 // ---------------------------------------------------------------------------
 #include <windows.h>
+#include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cstdint>
 #include <cstdio>
 #include <map>
@@ -44,17 +56,20 @@
 #include "game_files.h"
 #include "iggy_abc.h"
 #include "host.h"
+#include "../../sdk/xv2_files.h"
 
 namespace {
 
-// File request class, DBXV2.exe 1.26.01 (exe-and-tooling.md).
-const uintptr_t kRequestVtable = 0xf9b270;
+// File request class, DBXV2.exe 1.27 (exe-and-tooling.md).
+const uintptr_t kRequestVtable = 0xfa92f0;
 const size_t kRequestPath = 8, kRequestPathMax = 0x118;
 // Largest file a patch may hold: far above any game file (the biggest AWB
 // sound banks are ~100 MB; ITEMLIST's ABC is 66 KB).
 const size_t kMaxContentBytes = 512u * 1024 * 1024;
+// The old Replace* patches run before every AddStage stage.
+const int kReplaceOrder = INT_MIN;
 
-enum class PatchKind { kWholeFile, kIggyScript };
+enum class StageKind { kWholeFile, kIggyScript, kFunction };
 
 // A menu script and the original script it replaces.
 struct IggyVariant {
@@ -63,26 +78,35 @@ struct IggyVariant {
     std::vector<uint8_t> abc;
 };
 
-// One file a mod changes.
-struct FilePatch {
-    PatchKind kind = PatchKind::kWholeFile;
-    std::string pathSuffix;         // lower case, '/' ("ui/iggy/itemlist.iggy")
+// One step of a file's pipeline.
+struct Stage {
+    StageKind kind = StageKind::kWholeFile;
     std::string owner;              // the script (LUA_NAME) or the DLL's name, for messages and Remove
     bool fromScript = false;        // a Lua script's: dropped on an F1 reload (the script registers again)
-    std::vector<uint8_t> content;   // the whole file (kWholeFile) or, until registered, the new ABC (kIggyScript)
-    uint32_t vanillaAbcSize = 0;    // kIggyScript, until registered: the script it may replace
-    uint64_t vanillaAbcHash = 0;
-    std::vector<IggyVariant> variants;  // kIggyScript, once registered: one per original script
+    int order = 0;                  // lower runs first
+    uint64_t sequence = 0;          // registration number: ties of `order` run in this order
+    std::vector<uint8_t> content;   // kWholeFile: the file
+    std::vector<IggyVariant> variants;  // kIggyScript: one per original script
+    XV2FileStage function = nullptr;    // kFunction
+    void* user = nullptr;
+};
+
+// One file mods change, and its pipeline.
+struct PatchedFile {
+    std::string pathSuffix;         // lower case, '/' ("ui/iggy/itemlist.iggy")
+    std::vector<std::shared_ptr<const Stage>> stages;   // in running order
+    uint64_t generation = 0;        // raised whenever `stages` changes
     // Copies handed to the game per source content, (hash, size) -> copy, or
-    // null when that content couldn't be patched. The game may hold on to a
-    // buffer it was given, so copies are never freed.
+    // null when nothing changed it. The game may hold on to a buffer it was
+    // given, so copies are never freed.
     std::map<std::pair<uint64_t, uint64_t>, std::vector<uint8_t>*> served;
     std::string status;             // the last request's outcome, for Status
 };
 
-SRWLOCK g_lock = SRWLOCK_INIT;                         // g_patches, g_retiredCopies
-std::vector<std::unique_ptr<FilePatch>> g_patches;
-std::vector<std::vector<uint8_t>*> g_retiredCopies;    // served copies of removed patches (kept alive)
+SRWLOCK g_lock = SRWLOCK_INIT;                         // g_files, g_retiredCopies, g_nextSequence
+std::vector<std::unique_ptr<PatchedFile>> g_files;
+std::vector<std::vector<uint8_t>*> g_retiredCopies;    // served copies of changed pipelines (kept alive)
+uint64_t g_nextSequence = 0;
 
 typedef void*    (__fastcall* GetDataFn)(void* request);
 typedef uint64_t (__fastcall* GetSizeFn)(void* request);
@@ -104,58 +128,124 @@ std::string NormalisePath(const char* path)
     return out;
 }
 
-// The patch a file request is for, or null (call with g_lock held). The
-// game's requests use backslashes (data\ui\iggy\ITEMLIST.iggy), so '/' and
-// '\' compare equal, case-insensitively, and the suffix must start after a
-// separator ("itemlist.iggy" doesn't match "myitemlist.iggy").
-FilePatch* RequestedPatch(void* request)
+// The patched file a file request is for, or null (call with g_lock held).
+// The game's requests use backslashes (data\ui\iggy\ITEMLIST.iggy), so '/'
+// and '\' compare equal, case-insensitively, and the suffix must start after
+// a separator ("itemlist.iggy" doesn't match "myitemlist.iggy").
+PatchedFile* RequestedFile(void* request)
 {
     const char* path = (const char*)request + kRequestPath;
     size_t length = strnlen(path, kRequestPathMax);
-    for (auto& patch : g_patches) {
-        size_t suffix = patch->pathSuffix.size();
+    for (auto& file : g_files) {
+        size_t suffix = file->pathSuffix.size();
         if (length < suffix + 1) continue;
         const char* tail = path + length - suffix;
         bool same = tail[-1] == '/' || tail[-1] == '\\';
         for (size_t i = 0; same && i < suffix; ++i) {
             char have = tail[i] == '\\' ? '/' : (char)tolower((unsigned char)tail[i]);
-            same = have == patch->pathSuffix[i];
+            same = have == file->pathSuffix[i];
         }
-        if (same) return patch.get();
+        if (same) return file.get();
     }
     return nullptr;
 }
 
-// The patch with this (normalised) path, or null (call with g_lock held).
-std::unique_ptr<FilePatch>* PatchForPath(const std::string& pathSuffix)
+// The patched file with this (normalised) path, or null (call with g_lock held).
+PatchedFile* FileForPath(const std::string& pathSuffix)
 {
-    for (auto& patch : g_patches)
-        if (patch->pathSuffix == pathSuffix) return &patch;
+    for (auto& file : g_files)
+        if (file->pathSuffix == pathSuffix) return file.get();
     return nullptr;
 }
 
-// Builds the copy of `data` (the file as the game loaded it) that `patch`
-// makes; null, with the reason in patch.status, when it can't be patched.
-std::vector<uint8_t>* MakePatchedCopy(FilePatch& patch, const uint8_t* data, size_t size)
+// What a stage's function writes its result through (XV2FileOutput::Set).
+struct StageResult {
+    XV2FileOutput output;   // first: the function gets a pointer to this
+    std::vector<uint8_t> data;
+    bool set = false;
+};
+void __cdecl SetStageOutput(XV2FileOutput* output, const void* data, size_t size)
 {
-    if (patch.kind == PatchKind::kWholeFile) {
-        patch.status = "served: file replaced (" + std::to_string(patch.content.size()) + " bytes)";
-        return new std::vector<uint8_t>(patch.content);
+    StageResult* result = reinterpret_cast<StageResult*>(output);
+    if (!data || size == 0 || size > kMaxContentBytes) return;
+    result->data.assign(static_cast<const uint8_t*>(data), static_cast<const uint8_t*>(data) + size);
+    result->set = true;
+}
+
+// Calls a stage function, catching a crash in it (the file then goes on
+// unchanged instead of taking the game down). Separate because __try can't
+// sit in a function with C++ objects to destroy.
+const int kStageCrashed = INT_MIN;
+int CallStage(XV2FileStage function, void* user, const char* path, const void* original, size_t originalSize,
+              const void* current, size_t currentSize, XV2FileOutput* output)
+{
+    __try {
+        return function(user, path, original, originalSize, current, currentSize, output);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return kStageCrashed;
     }
-    auto copy = new std::vector<uint8_t>;
-    std::string note;
-    for (const IggyVariant& variant : patch.variants) {
-        copy->clear();
-        if (ReplaceIggyAbc(data, size, variant.vanillaAbcSize, variant.vanillaAbcHash, variant.abc.data(),
-                           variant.abc.size(), *copy, note)) {
-            patch.status = "served: " + note;
-            if (patch.variants.size() > 1) patch.status += " (over the " + std::to_string(variant.vanillaAbcSize) + "-byte original)";
-            return copy;
+}
+
+// Runs one stage on `current` (replaced when the stage changes it). Returns
+// the stage's outcome for the status line.
+std::string RunStage(const Stage& stage, const std::string& pathSuffix, const std::vector<uint8_t>& original,
+                     std::vector<uint8_t>& current)
+{
+    switch (stage.kind) {
+    case StageKind::kWholeFile:
+        current = stage.content;
+        return "served: file replaced (" + std::to_string(stage.content.size()) + " bytes)";
+    case StageKind::kIggyScript: {
+        std::vector<uint8_t> patched;
+        std::string note;
+        for (const IggyVariant& variant : stage.variants) {
+            patched.clear();
+            if (ReplaceIggyAbc(current.data(), current.size(), variant.vanillaAbcSize, variant.vanillaAbcHash,
+                               variant.abc.data(), variant.abc.size(), patched, note)) {
+                current.swap(patched);
+                std::string status = "served: " + note;
+                if (stage.variants.size() > 1) status += " (over the " + std::to_string(variant.vanillaAbcSize) + "-byte original)";
+                return status;
+            }
         }
+        return "NOT patched: " + note;
     }
-    delete copy;
-    patch.status = "NOT patched: " + note;
-    return nullptr;
+    case StageKind::kFunction: {
+        StageResult result{};
+        result.output.Set = &SetStageOutput;
+        const int outcome = CallStage(stage.function, stage.user, pathSuffix.c_str(), original.data(), original.size(),
+                                      current.data(), current.size(), &result.output);
+        if (outcome == kStageCrashed) return "NOT patched: the stage crashed";
+        result.output.note[sizeof(result.output.note) - 1] = '\0';
+        const std::string note = result.output.note;
+        if (outcome > 0 && result.set) {
+            current.swap(result.data);
+            return "served: " + (note.empty() ? "changed (" + std::to_string(current.size()) + " bytes)" : note);
+        }
+        if (outcome == 0) return "unchanged" + (note.empty() ? std::string() : ": " + note);
+        return "NOT patched: " + (note.empty() ? std::string("failed") : note);
+    }
+    }
+    return "NOT patched: unknown stage";
+}
+
+// Runs a pipeline over the game's file. Returns the result, or null when no
+// stage changed it; `status` gets every stage's outcome.
+std::vector<uint8_t>* RunPipeline(const std::vector<std::shared_ptr<const Stage>>& stages, const std::string& pathSuffix,
+                                  const uint8_t* data, size_t size, std::string& status)
+{
+    const std::vector<uint8_t> original(data, data + size);
+    std::vector<uint8_t> current = original;
+    bool changed = false;
+    status.clear();
+    for (const auto& stage : stages) {
+        const size_t before = current.size();
+        const std::string outcome = RunStage(*stage, pathSuffix, original, current);
+        changed = changed || outcome.compare(0, 7, "served:") == 0 || current.size() != before;
+        // one stage: its outcome as is (what scripts showed before stages)
+        status += stages.size() == 1 ? outcome : (status.empty() ? "" : "; ") + stage->owner + ": " + outcome;
+    }
+    return changed ? new std::vector<uint8_t>(std::move(current)) : nullptr;
 }
 
 // The patched copy to hand out for this request, or null for the original.
@@ -163,22 +253,45 @@ std::vector<uint8_t>* MakePatchedCopy(FilePatch& patch, const uint8_t* data, siz
 std::vector<uint8_t>* Lookup(void* request, void* data, uint64_t size)
 {
     if (!data) return nullptr;
+    // Re-hashed every time: a changed file (another mod, a reinstall) is
+    // patched afresh rather than served from the cache.
+    const uint64_t hash = Fnv64((const uint8_t*)data, (size_t)size);
+    std::vector<std::shared_ptr<const Stage>> stages;
+    std::string pathSuffix;
+    uint64_t generation = 0;
     AcquireSRWLockExclusive(&g_lock);
-    FilePatch* patch = g_patches.empty() ? nullptr : RequestedPatch(request);
-    std::vector<uint8_t>* served = nullptr;
-    if (patch) {
-        // Re-hashed every time: a changed file (another mod, a reinstall) is
-        // patched afresh rather than served from the cache.
-        uint64_t hash = Fnv64((const uint8_t*)data, (size_t)size);
-        auto found = patch->served.find({hash, size});
-        if (found != patch->served.end()) {
-            served = found->second;
-        } else {
-            served = MakePatchedCopy(*patch, (const uint8_t*)data, (size_t)size);
-            Log("file %s (%llu bytes) for %s: %s", patch->pathSuffix.c_str(), (unsigned long long)size,
-                patch->owner.c_str(), patch->status.c_str());
-            patch->served[{hash, size}] = served;
+    PatchedFile* file = g_files.empty() ? nullptr : RequestedFile(request);
+    if (file) {
+        auto found = file->served.find({hash, size});
+        if (found != file->served.end()) {
+            std::vector<uint8_t>* served = found->second;
+            ReleaseSRWLockExclusive(&g_lock);
+            return served;
         }
+        stages = file->stages;
+        pathSuffix = file->pathSuffix;
+        generation = file->generation;
+    }
+    ReleaseSRWLockExclusive(&g_lock);
+    if (stages.empty()) return nullptr;
+
+    std::string status;
+    std::vector<uint8_t>* served = RunPipeline(stages, pathSuffix, (const uint8_t*)data, (size_t)size, status);
+    Log("file %s (%llu bytes): %s", pathSuffix.c_str(), (unsigned long long)size, status.c_str());
+
+    AcquireSRWLockExclusive(&g_lock);
+    file = FileForPath(pathSuffix);
+    if (file && file->generation == generation) {
+        auto found = file->served.find({hash, size});
+        if (found == file->served.end()) {
+            file->served[{hash, size}] = served;
+            file->status = status;
+        } else {   // another loading thread finished first: serve its copy
+            if (served) g_retiredCopies.push_back(served);
+            served = found->second;
+        }
+    } else if (served) {
+        g_retiredCopies.push_back(served);   // the pipeline changed meanwhile; hand this one out once
     }
     ReleaseSRWLockExclusive(&g_lock);
     return served;
@@ -189,7 +302,7 @@ std::vector<uint8_t>* Lookup(void* request, void* data, uint64_t size)
 bool WantsRequest(void* request)
 {
     AcquireSRWLockShared(&g_lock);
-    bool wanted = !g_patches.empty() && RequestedPatch(request);
+    bool wanted = !g_files.empty() && RequestedFile(request);
     ReleaseSRWLockShared(&g_lock);
     return wanted;
 }
@@ -224,8 +337,8 @@ bool EnsureFileHook(std::string& reason)
 {
     AcquireSRWLockExclusive(&g_hookLock);
     if (g_hookState == HookState::kNotTried) {
-        if (!IsGame12601()) {
-            g_hookFailure = "needs DBXV2.exe 1.26.01";
+        if (!IsSupportedGame()) {
+            g_hookFailure = "needs DBXV2.exe 1.27";
         } else {
             HANDLE lock = CreateMutexW(nullptr, FALSE, L"XV2Mods_FileRequestHook");
             if (lock) WaitForSingleObject(lock, 10000);
@@ -256,98 +369,136 @@ bool EnsureFileHook(std::string& reason)
     return installed;
 }
 
-// Moves a patch's served copies to g_retiredCopies (the game may still use
-// them). Call with g_lock held.
-void RetireCopies(FilePatch& patch)
+// After a pipeline changed: its served copies go to g_retiredCopies (the
+// game may still use them) and later reads run the new pipeline. Call with
+// g_lock held.
+void PipelineChanged(PatchedFile& file)
 {
-    for (auto& copy : patch.served)
+    for (auto& copy : file.served)
         if (copy.second) g_retiredCopies.push_back(copy.second);
-    patch.served.clear();
+    file.served.clear();
+    file.status = file.stages.empty() ? "" : "registered, not loaded by the game yet";
+    ++file.generation;
 }
 
-// Adds `patch` (its kind, pathSuffix, owner, fromScript and content set).
-// Refused when the path is empty, the hook can't go in, or another owner
-// already patches the file; the same owner registering again replaces its
-// patch. False with the reason.
-bool RegisterPatch(std::unique_ptr<FilePatch> patch, std::string& reason)
+// Drops files with no stages left. Call with g_lock held.
+void DropEmptyFiles()
 {
-    if (patch->pathSuffix.empty()) {
+    g_files.erase(std::remove_if(g_files.begin(), g_files.end(), [](const std::unique_ptr<PatchedFile>& file) {
+                      return file->stages.empty();
+                  }),
+                  g_files.end());
+}
+
+bool IsReplace(const Stage& stage) { return stage.kind != StageKind::kFunction; }
+
+// Adds `stage` to the pipeline of `pathSuffix` (kind, owner, fromScript,
+// order and its data set). A Replace stage is refused when another owner
+// already has one on the file and replaces the same owner's (a menu script
+// for another original is added to it); a function stage replaces the same
+// owner's function stage. False with the reason.
+bool AddStage(const std::string& pathSuffix, std::unique_ptr<Stage> stage, std::string& reason)
+{
+    if (pathSuffix.empty()) {
         reason = "empty path";
         return false;
     }
     if (!EnsureFileHook(reason)) return false;
-    patch->status = "registered, not loaded by the game yet";
-    if (patch->kind == PatchKind::kIggyScript) {
-        patch->variants.push_back({patch->vanillaAbcSize, patch->vanillaAbcHash, std::move(patch->content)});
-        patch->content.clear();
-    }
-    const std::string pathSuffix = patch->pathSuffix, owner = patch->owner;
+    const std::string owner = stage->owner;
     AcquireSRWLockExclusive(&g_lock);
-    std::unique_ptr<FilePatch>* existing = PatchForPath(pathSuffix);
-    if (existing && (*existing)->owner != owner) {
-        reason = "already patched by " + (*existing)->owner;
-        ReleaseSRWLockExclusive(&g_lock);
-        return false;
+    PatchedFile* file = FileForPath(pathSuffix);
+    if (!file) {
+        g_files.push_back(std::make_unique<PatchedFile>());
+        file = g_files.back().get();
+        file->pathSuffix = pathSuffix;
     }
-    // the same owner's scripts for other originals stay
-    if (existing && (*existing)->kind == PatchKind::kIggyScript && patch->kind == PatchKind::kIggyScript) {
-        const IggyVariant& added = patch->variants.front();
-        for (IggyVariant& kept : (*existing)->variants)
-            if (kept.vanillaAbcSize != added.vanillaAbcSize || kept.vanillaAbcHash != added.vanillaAbcHash)
-                patch->variants.push_back(std::move(kept));
+    auto& stages = file->stages;
+    for (auto it = stages.begin(); it != stages.end(); ++it) {
+        const Stage& existing = **it;
+        if (IsReplace(*stage) && IsReplace(existing) && existing.owner != owner) {
+            reason = "already patched by " + existing.owner;
+            DropEmptyFiles();
+            ReleaseSRWLockExclusive(&g_lock);
+            return false;
+        }
+        if (existing.owner != owner || IsReplace(existing) != IsReplace(*stage)) continue;
+        // the same owner's scripts for other originals stay
+        if (existing.kind == StageKind::kIggyScript && stage->kind == StageKind::kIggyScript) {
+            const IggyVariant& added = stage->variants.front();
+            for (const IggyVariant& kept : existing.variants)
+                if (kept.vanillaAbcSize != added.vanillaAbcSize || kept.vanillaAbcHash != added.vanillaAbcHash)
+                    stage->variants.push_back(kept);
+        }
+        stage->sequence = existing.sequence;   // keeps its place
+        stages.erase(it);
+        break;
     }
-    if (existing) {
-        RetireCopies(**existing);
-        *existing = std::move(patch);
-    } else {
-        g_patches.push_back(std::move(patch));
-    }
+    if (!stage->sequence) stage->sequence = ++g_nextSequence;
+    stages.push_back(std::move(stage));
+    std::stable_sort(stages.begin(), stages.end(), [](const std::shared_ptr<const Stage>& a, const std::shared_ptr<const Stage>& b) {
+        return a->order != b->order ? a->order < b->order : a->sequence < b->sequence;
+    });
+    PipelineChanged(*file);
+    const size_t count = stages.size();
     ReleaseSRWLockExclusive(&g_lock);
-    Log("file %s: %s registered a patch", pathSuffix.c_str(), owner.c_str());
+    Log("file %s: %s registered a patch (%zu in its pipeline)", pathSuffix.c_str(), owner.c_str(), count);
     return true;
 }
 
-// Removes `owner`'s patch of `path` (a mod path, normalised here). False
-// when there is none (or it is another owner's).
-bool RemovePatch(const std::string& owner, const char* path)
+// The Replace* registrations: a stage that runs before every function stage.
+bool RegisterReplace(const std::string& pathSuffix, std::unique_ptr<Stage> stage, std::string& reason)
+{
+    stage->order = kReplaceOrder;
+    return AddStage(pathSuffix, std::move(stage), reason);
+}
+
+// Removes `owner`'s stages of `path` (a mod path, normalised here). False
+// when there are none.
+bool RemoveStages(const std::string& owner, const char* path)
 {
     const std::string pathSuffix = NormalisePath(path);
     AcquireSRWLockExclusive(&g_lock);
     bool removed = false;
-    for (auto it = g_patches.begin(); it != g_patches.end(); ++it) {
-        if ((*it)->pathSuffix != pathSuffix || (*it)->owner != owner) continue;
-        RetireCopies(**it);
-        g_patches.erase(it);
-        removed = true;
-        break;
+    if (PatchedFile* file = FileForPath(pathSuffix)) {
+        auto& stages = file->stages;
+        const size_t before = stages.size();
+        stages.erase(std::remove_if(stages.begin(), stages.end(),
+                                    [&](const std::shared_ptr<const Stage>& stage) { return stage->owner == owner; }),
+                     stages.end());
+        removed = stages.size() != before;
+        if (removed) PipelineChanged(*file);
+        DropEmptyFiles();
     }
     ReleaseSRWLockExclusive(&g_lock);
     if (removed) Log("file %s: %s removed its patch", pathSuffix.c_str(), owner.c_str());
     return removed;
 }
 
-// The status of the patch of `path` (a mod path), or "" when the file has
-// none: "registered, not loaded by the game yet", "served: ...",
-// "NOT patched: ...".
+// The status of the patched file `path` (a mod path), or "" when no mod
+// patches it: "registered, not loaded by the game yet", "served: ...",
+// "NOT patched: ..." (with several stages, "owner: outcome; ...").
 std::string PatchStatus(const char* path)
 {
     const std::string pathSuffix = NormalisePath(path);
     std::string status;
     AcquireSRWLockShared(&g_lock);
-    if (std::unique_ptr<FilePatch>* patch = PatchForPath(pathSuffix)) status = (*patch)->status;
+    if (PatchedFile* file = FileForPath(pathSuffix)) status = file->status;
     ReleaseSRWLockShared(&g_lock);
     return status;
 }
 
-// The owner of the patch of `path` (a mod path), or "" when the file has none.
-std::string PatchOwner(const char* path)
+// The owners of the stages of `path` (a mod path) in running order, or
+// none when no mod patches it.
+std::vector<std::string> PatchOwners(const char* path)
 {
     const std::string pathSuffix = NormalisePath(path);
-    std::string owner;
+    std::vector<std::string> owners;
     AcquireSRWLockShared(&g_lock);
-    if (std::unique_ptr<FilePatch>* patch = PatchForPath(pathSuffix)) owner = (*patch)->owner;
+    if (PatchedFile* file = FileForPath(pathSuffix))
+        for (const auto& stage : file->stages)
+            if (std::find(owners.begin(), owners.end(), stage->owner) == owners.end()) owners.push_back(stage->owner);
     ReleaseSRWLockShared(&g_lock);
-    return owner;
+    return owners;
 }
 
 // Copies `text` into a caller's buffer, cut to fit and 0-terminated (nothing
@@ -434,15 +585,15 @@ int PushRegistered(lua_State* L, bool registered, const std::string& reason)
 //   file   the replacement, relative to the script's mod folder unless absolute
 int FilesReplaceFile(lua_State* L)
 {
-    auto patch = std::make_unique<FilePatch>();
-    patch->kind = PatchKind::kWholeFile;
-    patch->pathSuffix = NormalisePath(luaL_checkstring(L, 1));
+    auto stage = std::make_unique<Stage>();
+    stage->kind = StageKind::kWholeFile;
+    const std::string pathSuffix = NormalisePath(luaL_checkstring(L, 1));
     const std::wstring file = ArgFilePath(L, 2);
-    patch->owner = ScriptName(L);
-    patch->fromScript = true;
-    if (!ReadFileBytes(file, patch->content)) return PushRegistered(L, false, "can't read the file");
+    stage->owner = ScriptName(L);
+    stage->fromScript = true;
+    if (!ReadFileBytes(file, stage->content)) return PushRegistered(L, false, "can't read the file");
     std::string reason;
-    return PushRegistered(L, RegisterPatch(std::move(patch), reason), reason);
+    return PushRegistered(L, RegisterReplace(pathSuffix, std::move(stage), reason), reason);
 }
 
 // files.ReplaceIggyScript(path, abcFile, vanillaAbcSize, vanillaAbcHash)
@@ -453,44 +604,59 @@ int FilesReplaceFile(lua_State* L)
 //   vanillaAbcHash  FNV-1a 64 of that ABC (integer or "0x..." string)
 int FilesReplaceIggyScript(lua_State* L)
 {
-    auto patch = std::make_unique<FilePatch>();
-    patch->kind = PatchKind::kIggyScript;
-    patch->pathSuffix = NormalisePath(luaL_checkstring(L, 1));
+    auto stage = std::make_unique<Stage>();
+    stage->kind = StageKind::kIggyScript;
+    const std::string pathSuffix = NormalisePath(luaL_checkstring(L, 1));
     const std::wstring abcFile = ArgFilePath(L, 2);
     const lua_Integer vanillaAbcSize = luaL_checkinteger(L, 3);
     luaL_argcheck(L, vanillaAbcSize > 0 && vanillaAbcSize <= 0xffffffff, 3, "not an ABC size");
-    patch->vanillaAbcSize = (uint32_t)vanillaAbcSize;
-    patch->vanillaAbcHash = ArgHash(L, 4);
-    patch->owner = ScriptName(L);
-    patch->fromScript = true;
-    if (!ReadFileBytes(abcFile, patch->content)) return PushRegistered(L, false, "can't read the ABC file");
+    IggyVariant variant;
+    variant.vanillaAbcSize = (uint32_t)vanillaAbcSize;
+    variant.vanillaAbcHash = ArgHash(L, 4);
+    stage->owner = ScriptName(L);
+    stage->fromScript = true;
+    if (!ReadFileBytes(abcFile, variant.abc)) return PushRegistered(L, false, "can't read the ABC file");
+    stage->variants.push_back(std::move(variant));
     std::string reason;
-    return PushRegistered(L, RegisterPatch(std::move(patch), reason), reason);
+    return PushRegistered(L, RegisterReplace(pathSuffix, std::move(stage), reason), reason);
 }
 
 // files.Owner(path) -> owner | nil
-//   The script (LUA_NAME) or DLL mod that patches the file; nil when none.
+//   The first script (LUA_NAME) or DLL mod in the file's pipeline; nil when none.
 int FilesOwner(lua_State* L)
 {
-    const std::string owner = PatchOwner(luaL_checkstring(L, 1));
-    if (owner.empty()) lua_pushnil(L);
-    else lua_pushstring(L, owner.c_str());
+    const std::vector<std::string> owners = PatchOwners(luaL_checkstring(L, 1));
+    if (owners.empty()) lua_pushnil(L);
+    else lua_pushstring(L, owners.front().c_str());
+    return 1;
+}
+
+// files.Owners(path) -> { owner, ... }
+//   Every mod in the file's pipeline, in running order (empty when none).
+int FilesOwners(lua_State* L)
+{
+    const std::vector<std::string> owners = PatchOwners(luaL_checkstring(L, 1));
+    lua_createtable(L, (int)owners.size(), 0);
+    for (size_t i = 0; i < owners.size(); ++i) {
+        lua_pushstring(L, owners[i].c_str());
+        lua_rawseti(L, -2, (lua_Integer)i + 1);
+    }
     return 1;
 }
 
 // files.Remove(path) -> removed
-//   Drops this script's patch of `path`; copies the game already holds stay.
+//   Drops this script's patches of `path`; copies the game already holds stay.
 int FilesRemove(lua_State* L)
 {
     const char* path = luaL_checkstring(L, 1);
-    lua_pushboolean(L, RemovePatch(ScriptName(L), path));
+    lua_pushboolean(L, RemoveStages(ScriptName(L), path));
     return 1;
 }
 
 // files.Status(path) -> status | nil   (also files.IggyScriptStatus)
 //   What happened when the game last read the file ("served: ...",
-//   "NOT patched: ...", "registered, not loaded by the game yet"); nil when
-//   no mod patches it.
+//   "NOT patched: ...", "registered, not loaded by the game yet"; with
+//   several mods "owner: outcome; ..."); nil when no mod patches it.
 int FilesStatus(lua_State* L)
 {
     const std::string status = PatchStatus(luaL_checkstring(L, 1));
@@ -509,6 +675,7 @@ void RegisterLuaFiles(lua_State* L)
         {"Remove",            FilesRemove},
         {"Status",            FilesStatus},
         {"Owner",             FilesOwner},
+        {"Owners",            FilesOwners},
         {"ReadGameFile",      FilesReadGameFile},   // game_files.cpp
         {"IggyScriptStatus",  FilesStatus},     // the first name of Status (Item Search uses it)
         {nullptr, nullptr},
@@ -520,11 +687,15 @@ void RegisterLuaFiles(lua_State* L)
 void ClearScriptFilePatches()
 {
     AcquireSRWLockExclusive(&g_lock);
-    for (auto it = g_patches.begin(); it != g_patches.end();) {
-        if (!(*it)->fromScript) { ++it; continue; }
-        RetireCopies(**it);
-        it = g_patches.erase(it);
+    for (auto& file : g_files) {
+        auto& stages = file->stages;
+        const size_t before = stages.size();
+        stages.erase(std::remove_if(stages.begin(), stages.end(),
+                                    [](const std::shared_ptr<const Stage>& stage) { return stage->fromScript; }),
+                     stages.end());
+        if (stages.size() != before) PipelineChanged(*file);
     }
+    DropEmptyFiles();
     ReleaseSRWLockExclusive(&g_lock);
 }
 
@@ -533,30 +704,39 @@ void ClearScriptFilePatches()
 //  removed (an F1 reload only drops the Lua scripts').
 // ---------------------------------------------------------------------------
 
-// Shared by the two Replace exports: checks the arguments, fills the common
-// fields and registers. Returns 1 / 0, the reason copied into `reason`.
-static int RegisterFromDll(std::unique_ptr<FilePatch> patch, const char* owner, const char* path, const void* data,
-                           size_t size, char* reason, int reasonBytes)
+// Shared by the exports: checks owner and path, registers, copies a refusal's
+// reason out. Returns 1 / 0.
+static int RegisterFromDll(std::unique_ptr<Stage> stage, const char* owner, const char* path, bool replace, char* reason,
+                           int reasonBytes)
 {
     std::string failure;
-    if (!owner || !*owner || !path || !data || size == 0 || size > kMaxContentBytes) {
-        failure = "bad arguments (owner, path and data are required)";
+    if (!owner || !*owner || !path) {
+        failure = "bad arguments (owner and path are required)";
     } else {
-        patch->owner = owner;
-        patch->pathSuffix = NormalisePath(path);
-        patch->content.assign(static_cast<const uint8_t*>(data), static_cast<const uint8_t*>(data) + size);
-        if (RegisterPatch(std::move(patch), failure)) return 1;
+        stage->owner = owner;
+        const std::string pathSuffix = NormalisePath(path);
+        if (replace ? RegisterReplace(pathSuffix, std::move(stage), failure) : AddStage(pathSuffix, std::move(stage), failure))
+            return 1;
     }
     CopyOut(failure, reason, reasonBytes);
     return 0;
 }
 
+// The data argument of the Replace exports: copied, or false when missing / too big.
+static bool CopyData(const void* data, size_t size, std::vector<uint8_t>& out)
+{
+    if (!data || size == 0 || size > kMaxContentBytes) return false;
+    out.assign(static_cast<const uint8_t*>(data), static_cast<const uint8_t*>(data) + size);
+    return true;
+}
+
 extern "C" __declspec(dllexport) int XV2Files_ReplaceFile(const char* owner, const char* path, const void* data,
                                                           size_t size, char* reason, int reasonBytes)
 {
-    auto patch = std::make_unique<FilePatch>();
-    patch->kind = PatchKind::kWholeFile;
-    return RegisterFromDll(std::move(patch), owner, path, data, size, reason, reasonBytes);
+    auto stage = std::make_unique<Stage>();
+    stage->kind = StageKind::kWholeFile;
+    if (!CopyData(data, size, stage->content)) return CopyOut("bad arguments (no data)", reason, reasonBytes), 0;
+    return RegisterFromDll(std::move(stage), owner, path, true, reason, reasonBytes);
 }
 
 extern "C" __declspec(dllexport) int XV2Files_ReplaceIggyScript(const char* owner, const char* path, const void* abc,
@@ -564,16 +744,31 @@ extern "C" __declspec(dllexport) int XV2Files_ReplaceIggyScript(const char* owne
                                                                 uint64_t vanillaAbcHash, char* reason,
                                                                 int reasonBytes)
 {
-    auto patch = std::make_unique<FilePatch>();
-    patch->kind = PatchKind::kIggyScript;
-    patch->vanillaAbcSize = vanillaAbcSize;
-    patch->vanillaAbcHash = vanillaAbcHash;
-    return RegisterFromDll(std::move(patch), owner, path, abc, abcSize, reason, reasonBytes);
+    auto stage = std::make_unique<Stage>();
+    stage->kind = StageKind::kIggyScript;
+    IggyVariant variant;
+    variant.vanillaAbcSize = vanillaAbcSize;
+    variant.vanillaAbcHash = vanillaAbcHash;
+    if (!CopyData(abc, abcSize, variant.abc)) return CopyOut("bad arguments (no data)", reason, reasonBytes), 0;
+    stage->variants.push_back(std::move(variant));
+    return RegisterFromDll(std::move(stage), owner, path, true, reason, reasonBytes);
+}
+
+extern "C" __declspec(dllexport) int XV2Files_AddStage(const char* owner, const char* path, int order,
+                                                       XV2FileStage function, void* user, char* reason, int reasonBytes)
+{
+    if (!function) return CopyOut("bad arguments (no function)", reason, reasonBytes), 0;
+    auto stage = std::make_unique<Stage>();
+    stage->kind = StageKind::kFunction;
+    stage->order = order == INT_MIN ? INT_MIN + 1 : order;   // INT_MIN is the Replace patches'
+    stage->function = function;
+    stage->user = user;
+    return RegisterFromDll(std::move(stage), owner, path, false, reason, reasonBytes);
 }
 
 extern "C" __declspec(dllexport) int XV2Files_Remove(const char* owner, const char* path)
 {
-    return owner && path && RemovePatch(owner, path) ? 1 : 0;
+    return owner && path && RemoveStages(owner, path) ? 1 : 0;
 }
 
 extern "C" __declspec(dllexport) int XV2Files_Status(const char* path, char* out, int outBytes)
@@ -583,5 +778,14 @@ extern "C" __declspec(dllexport) int XV2Files_Status(const char* path, char* out
 
 extern "C" __declspec(dllexport) int XV2Files_Owner(const char* path, char* out, int outBytes)
 {
-    return CopyOut(path ? PatchOwner(path) : std::string(), out, outBytes);
+    const std::vector<std::string> owners = path ? PatchOwners(path) : std::vector<std::string>();
+    return CopyOut(owners.empty() ? std::string() : owners.front(), out, outBytes);
+}
+
+extern "C" __declspec(dllexport) int XV2Files_Owners(const char* path, char* out, int outBytes)
+{
+    std::string joined;
+    if (path)
+        for (const std::string& owner : PatchOwners(path)) joined += (joined.empty() ? "" : "\n") + owner;
+    return CopyOut(joined, out, outBytes);
 }

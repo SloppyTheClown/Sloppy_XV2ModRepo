@@ -1355,14 +1355,18 @@ bool FitPropsToRace(const ReadGameData& read, const std::vector<uint8_t>& raceBc
             triangles += kept;
         }
     }
-    if (objects.empty()) {
-        note = propBones.empty() ? withoutBones : "prop bones but no mesh skinned to them";
+    // Animated prop bones without a mesh still matter: effects can hang on
+    // them (Dark King Fu's sword is XBF.eepk's effect on a_x_sword1/3; without
+    // the bone the game draws it at the hip). Such a style gets the race's
+    // BCS unchanged plus the skeletons with the bones.
+    if (objects.empty() && propBones.empty()) {
+        note = withoutBones;
         return false;
     }
 
     std::vector<uint8_t> fittedBcs = raceBcs;
-    const size_t parts = AddPhysicsObjects(fittedBcs, objects);
-    if (!parts) {
+    const size_t parts = objects.empty() ? 0 : AddPhysicsObjects(fittedBcs, objects);
+    if (!objects.empty() && !parts) {
         note = "race BCS has no Bust part with a mesh";
         return false;
     }
@@ -1397,6 +1401,7 @@ bool FitPropsToRace(const ReadGameData& read, const std::vector<uint8_t>& raceBc
              "meshes x%.3f (arm %.3f -> %.3f, height x%.3f)",
              props.size(), objects.size(), triangles, parts, armRatio, meshScale, styleArm, raceArm, back.heightRatio);
     note = summary;
+    if (objects.empty()) note += " - bones only (no mesh skinned to them; for effects on them)";
     if (back.backKnown) {
         snprintf(summary, sizeof(summary), ", back props %+.3f deep (back %.3f -> %.3f)", back.shift, back.styleBack,
                  back.raceBack);

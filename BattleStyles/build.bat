@@ -7,7 +7,7 @@ rem   build.bat install    build, then install into XV2 Mod Loader's mods folder
 rem   build.bat uninstall  remove BattleStyles.dll, data\battle_styles\fit,
 rem                        data\sound\SE\Battle\Chara\BattleStyles and the prop
 rem                        files data\chara\*\*_bsprop* (your config is kept)
-rem   build.bat release    build, then write ..\..\_Releases\BattleStyles-<VERSION>.zip (extract into the game folder)
+rem   build.bat release    build, then write ..\..\_Releases\BattleStyles-<VERSION>-XV2_<GAME_VERSION>.zip (extract into the game folder)
 rem
 rem install and release also put the moveset converter in the mod folder:
 rem "Convert_Moveset (Drag installers here).bat" + tools\moveset_to_style.exe:
@@ -67,7 +67,8 @@ set "STAGE=%OUT%\package"
 set "PKG=%STAGE%\XV2ModLoader\mods\BattleStyles"
 rem The VERSION file names the zip and ships in the mod folder (CHANGELOG.md).
 set /p VERSION=<"%SRC%VERSION"
-set "ZIP=%SRC%..\..\_Releases\BattleStyles-%VERSION%.zip"
+set /p GAME_VERSION=<"%SRC%..\GAME_VERSION"
+set "ZIP=%SRC%..\..\_Releases\BattleStyles-%VERSION%-XV2_%GAME_VERSION%.zip"
 if exist "%STAGE%" rmdir /s /q "%STAGE%"
 mkdir "%PKG%" || exit /b 1
 copy /y "%OUT%\Release\BattleStyles.dll" "%PKG%\" >nul || exit /b 1

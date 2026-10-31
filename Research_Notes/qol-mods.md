@@ -10,7 +10,7 @@ linked per row.
   replay NPC and the rest of the table below.
 * Uses the shared file-request hook (exe-and-tooling.md), chained with any
   other mod that hooks it.
-* Replay list: filters like vanilla (DLC check 0x59b570 + "reached" filter:
+* Replay list: filters like vanilla (DLC check 0x59c0c0 + "reached" filter:
   quest state >= 1), always; it looks for no other mod. Quests whose DLC
   check passes still need state >= 1, so unreached quests are not listed.
   Log: "N listed, M still DLC-locked" / quests held back.
@@ -24,9 +24,9 @@ linked per row.
   (costume/preset; preset 0 of DMG/MRN/ZMD is the normal base-game slot) and
   SBM costume 3 preset 1. CST UnlockIndex 0, no QXD Chara_Unlock
   (`ClaudeTools\qxd_chara_unlocks.py`).
-* **The unlock = account flags.** 0x5e4140 (called from 0x5e276f) has a
+* **The unlock = account flags.** 0x5e4c70 (called from 0x5e276f) has a
   table {code, costume (-1 any), ACCFLAG} and hides a slot while its flag
-  (getter 0x826ba0, edx = entry +0x24) is off: TOW 1 -> 14, DMG -> 20,
+  (getter 0x834be0, edx = entry +0x24) is off: TOW 1 -> 14, DMG -> 20,
   MRN -> 21, ZMD -> 22, STD -> 24, SBM 6 -> 24, TE0 1 -> 25.
   Script names (lobby_event_manage.tsd constants): 20/21/22 =
   ACCFLAG_ORE_RAID_UNLOCK_DMG/MIR/ZMD, set by npc_talk_present_fuu.tsr when
@@ -36,8 +36,8 @@ linked per row.
   flag thread (save-wide, like the level cap). ACCFLAG 23 is read at
   0x554407 / 0x6026cd / 0x60ddc9 - not checked what for.
 * Raid-only part (kept vanilla now): SelectCharacter's owned key mask
-  0x5e3a60 (only caller 0x5e6105) sets bit 0x1c only if the current quest's
-  type (`[0x15545b0] -> 0x81ad40 -> +0x34`, getter 0x2da2a0) == 0xf or menu
+  0x5e4590 (only caller 0x5e6c35) sets bit 0x1c only if the current quest's
+  type (`[0x1568310] -> 0x828ce0 -> +0x34`, getter 0x2da2a0) == 0xf or menu
   +0x27e4 != 0: `0f ba e8 1c / 85 ff / 0f 44 c3` at 0x5e3c9e. NOPing the
   cmove at 0x5e3ca4 shows the raid slots in every select.
 * Dead ends: the 12 other `test ..,0x10000000` / `bt ..,0x1c` sites
@@ -49,24 +49,25 @@ linked per row.
 | key | mechanism | notes (topic file) |
 |---|---|---|
 | `clear_story_flags` | mentors (NPCs 3..36, type-1 triggers only) + desks/robots -> `AVATAR(LEVEL)>=1` / always / never-locked; QXD story requirements cleared (type 0, incl. CTP_00_01); IDB AVAILABILITY 30..46 -> 0x7fff; flag thread sets UNLOCK_* SYSFLAGs | lobby-quests-and-shops, save-flags-and-unlocks |
-| `unlock_flight` (old `unlock_flight_after_prologue` still read) | code: "can fly" 0x84b380 -> `mov eax,1; ret`; flags and lobby files untouched (until 2026-10-14: flags 36 + 16 + script/TSD trigger 311 edits) | save-flags-and-unlocks "Flight without the flag" |
-| `lobby_flight_speed` (number, 1 = off) | cave at 0x4b3d63 in PhysChar@Lobby's step: xmm10 (velocity factor) x multiplier for the local lobby player while airborne | lobby-physics-and-debug-menu "Flight speed" |
+| `unlock_flight` (old `unlock_flight_after_prologue` still read) | code: "can fly" 0x859490 -> `mov eax,1; ret`; flags and lobby files untouched (until 2026-10-14: flags 36 + 16 + script/TSD trigger 311 edits) | save-flags-and-unlocks "Flight without the flag" |
+| `lobby_flight_speed` (number, 1 = off) | cave at 0x4b4693 in PhysChar@Lobby's step: xmm10 (velocity factor) x multiplier for the local lobby player while airborne | lobby-physics-and-debug-menu "Flight speed" |
 | `unlock_teleports` | flags 60..69; robots' SHOP_TELEPORT_LOCKED `!=3` -> `==9` | |
 | `unlock_all_parallel_quests` | clears QXD type-1 requirements; tmq_data.qxd unlock kind (+80) -> 0 for every record | requirements alone left PQs hidden behind their parent quest / story-event kind 3 (lobby-quests-and-shops.md "QXD quest data") |
 | `unlock_all_expert_missions` | clears type-4 (HLQ) requirements, sets flag 2400 (list rift) | per-mission rifts still chain (TSD unchanged) |
 | `unlock_level_cap` | ACCFLAG 6-9, 30-34 | |
 | `tp_shop_all_seasons` | EventShopTbl.est: all items every season | **not tested in game** |
-| `replay_npc` (+ `quests`, `menu_title`, `talk_voice`) | Dastar's slot -> "DLC Master" (Hercule): TSD/TNL/msg, menu hooks 0x599ba0/0x5996c0, menu title text + CMNTITLE art blanked, voice cue remap | built-in list of 60 quests; title-art blanking **not confirmed in game** |
+| `replay_npc` (+ `quests`, `menu_title`, `talk_voice`) | Dastar's slot -> "DLC Master" (Hercule): TSD/TNL/msg, menu hooks 0x59a6f0/0x59a210, menu title text + CMNTITLE art blanked, voice cue remap | built-in list of 60 quests; title-art blanking **not confirmed in game** |
 | `skip_logos` | NOP the je at 0x57e63d | boot-and-camera |
 | `skip_intro` | WaitInstall Start -> jmp Stop | |
 | `title_volume` (old `mute_title_music`) | at boot set categories 0/2/1 from options 3/4/5 remembered in `general_qol_saved.txt` (taken only when categories equal options); none yet -> mute cat 0 | sound; with the PC save (options 0/1/2) title music stays silent anyway |
-| `camera_zoom` (object; `true`/`false` accepted) | SetMainCamera/SetMainPrevCamera import hooks + calcViewMatrix + culling 0x33b610/0x31dd70/0x31d980 hooks; keys `+`/`-`, Backspace reset, configurable keys/speed/min/max, saved per mode | boot-and-camera; clips through walls by design |
+| `camera_zoom` (object; `true`/`false` accepted) | SetMainCamera/SetMainPrevCamera import hooks + calcViewMatrix + culling 0x33b880/0x31dfe0/0x31d980 hooks; keys `+`/`-`, Backspace reset, configurable keys/speed/min/max, saved per mode | boot-and-camera; clips through walls by design |
 | `automatic_flag_fixer` (object or bool; `enabled`, `conton_tv_loop`) | exe byte patch 0x3d5234 (Conton TV unlock check tests flag 80 instead of 34) at boot | save-flags-and-unlocks; live patch confirmed, built DLL not yet run |
-| `mentor_names_on_map` | exe: append call 0x576904 -> cave (mov r9, rdi) -> NPC name (npc+0x42) as `,c0=..` on each map "Event:" line; file: LOBYHUD.iggy gets a new AS3 block (`as3\LobbyMap.as`, built by `ClaudeTools\iggy\lobyhud_abc.py` into `src\lobyhud_abc.h`) labelling po_icn_sensei/sensei2 icons | ui-iggy-and-textures; works in game |
-| `reveal_hidden_conditions` | exe: NOP the jl's at 0x59f397 / 0x59f406 so PQ details show condition lines 2/3 instead of "???" | lobby-quests-and-shops "Quest details"; works in game (2026-10-12) |
-| `wait_for_all_ready` | exe: mov at 0x5cfb6c -> jmp, so the online room's 15 s Ready countdown never starts; the host still starts once all are ready | lobby-quests-and-shops "Online room countdown"; confirmed in game (PC <-> Deck) |
-| `wait_for_all_ready_raid` | exe: jb at 0x5cfa2c -> jmp, the 60 s countdown of room modes 4/5/9/12 (which rooms those are is unknown - maybe Raid) | lobby-quests-and-shops "Online room countdown"; installed on the PC, not seen in game |
-| `all_dragon_balls` | exe hook on the item count 0x848bf0: Dragon Balls (type 7, ids 1..7) always count 1, so Shenron's script check passes and the wish reports 0 balls bought | save-flags-and-unlocks "Dragon Balls and the Shenron wish"; confirmed in game |
+| `mentor_names_on_map` | exe: append call 0x577454 -> cave (mov r9, rdi) -> NPC name (npc+0x42) as `,c0=..` on each map "Event:" line; file: LOBYHUD.iggy gets a new AS3 block (`as3\LobbyMap.as`, built by `ClaudeTools\iggy\lobyhud_abc.py` into `src\lobyhud_abc.h`) labelling po_icn_sensei/sensei2 icons | ui-iggy-and-textures; works in game |
+| `free_attribute_points` | file: AVATAR_FACULTY.iggy gets a new AS3 block (`as3\AvatarStatus.as`, built by `ClaudeTools\iggy\menu_abc.py qol_faculty` into `src\avatar_faculty_abc.h`, patched by `src\iggy_abc.cpp`): each attribute's floor is 0 instead of its confirmed value | "Free attribute points" below; confirmed in game |
+| `reveal_hidden_conditions` | exe: NOP the jl's at 0x59fee7 / 0x59ff56 so PQ details show condition lines 2/3 instead of "???" | lobby-quests-and-shops "Quest details"; works in game (2026-10-12) |
+| `wait_for_all_ready` | exe: mov at 0x5d069c -> jmp, so the online room's 15 s Ready countdown never starts; the host still starts once all are ready | lobby-quests-and-shops "Online room countdown"; confirmed in game (PC <-> Deck) |
+| `wait_for_all_ready_raid` | exe: jb at 0x5d055c -> jmp, the 60 s countdown of room modes 4/5/9/12 (which rooms those are is unknown - maybe Raid) | lobby-quests-and-shops "Online room countdown"; installed on the PC, not seen in game |
+| `all_dragon_balls` | exe hook on the item count 0x856d00: Dragon Balls (type 7, ids 1..7) always count 1, so Shenron's script check passes and the wish reports 0 balls bought | save-flags-and-unlocks "Dragon Balls and the Shenron wish"; confirmed in game |
 | `log_files` (debug, not in the shipped json) | logs every loaded path | |
 
 * `HookCode()` is shared by all code hooks (8-byte atomic jmp write).
@@ -80,8 +81,40 @@ linked per row.
   change: e.g. 508 type-1 NPC triggers, 75 desk/robot triggers, 606 QXD values).
 * `ClaudeTools\gamefiles\verify_dll_files.py`: runs General_QoL's `npctest`
   CMake target (EXCLUDE_FROM_ALL - build first) on the archive originals, checks every result with independent parsers.
-* run.bat also runs `maptest` (LOBYHUD.iggy patch == lobyhud_abc.py's,
-  name encoding cases).
+* run.bat also runs `maptest` (LOBYHUD.iggy and AVATAR_FACULTY.iggy
+  patches == lobyhud_abc.py's, name encoding cases).
+
+## Free attribute points (`free_attribute_points`, 2026-10-15)
+Confirmed attribute points could only be lowered with the Shenron reset
+wish. The lock is **only in the menu's ActionScript**; the exe saves whatever
+the menu sends.
+* Menu: `EditStatus@Menu` (1.26.01 RVAs), vtable 0x10a1ca0, ctor 0x50a8d0.
+  Its iggy name table at 0x14a8518 holds absolute pointers (image base
+  0x7ff78e790000 in the dump) -> "data/ui/iggy/AVATAR_FACULTY.iggy" /
+  ".iggytex", msg "data/msg/customize_status_text". Found with
+  `ClaudeTools\exe\vt.py` on "@Menu@Game@XG@@" + `strs.py` for the names.
+* User data the exe sends (open 0x50afa0 -> 0x50b013, through 0x2c82a0):
+  3 = free points, 4 = max per attribute (100; 0xc8 / 0x7d with the limit
+  breaks, from [+0x240] / [+0x244]), 5..10 = the six values. Init 0x50b610
+  loads them from the CaC object.
+* AS callback (vtable slot 17 = 0x50ad10): send types 3..8 -> value
+  `[this+type*4+0x1e8]` (= +0x1f4..+0x208), 2 -> free points at +0x1f0,
+  0 -> confirm popup, 9 -> sound.
+* Confirm 0x50b380 (case 1 at 0x50b44d) writes through the CaC setters
+  0x81c070 (free points), 0x81bbd0, 0x81ba50, 0x81bb60, 0x81b8f0, 0x81b940,
+  0x81c050 (values): xor-encoded store + an event through 0x863cf0, **no
+  clamp** - a lower value is saved as it is. 0x50b2a0 (changed check)
+  compares with the saved values, either direction.
+* AS (`action_script.AvatarStatus`, vanilla ABC 14221 bytes, FNV-1a
+  e1bda563c2c786aa): `changeStatusParam` refused values below
+  `m_param_base_array` (the confirmed value); `isEditorParamMin`
+  (edit <= base) drove the left arrow, the "changed" checks (decide effect,
+  isStatusChange for the confirm/reset/exit popups) and the value colour.
+  The patch: floor 0; `isEditorParamMin` = edit <= 0 (arrow only, also shown
+  on the first row at open); new `isEditorParamChanged` = edit != base for
+  the rest. `resetStatusParam` already adds (edit - base) back, negative too.
+* FFDec roundtrip (`roundtrip_check.py faculty`): only the intended
+  differences.
 
 ## State (2026-10-03)
 * User-confirmed: replay NPC + menu + Hercule's

@@ -67,6 +67,25 @@ bool ReadGameFileEnds(const std::string& path, size_t headSize,
     return true;
 }
 
+// The loader's copy-out functions (Status, Owner) cut to the buffer and
+// return the full length, so a second call gets a longer text whole.
+static std::string CopiedText(int (*copy)(const char*, char*, int), const std::string& path)
+{
+    if (!copy) return std::string();
+    std::string text(256, '\0');
+    int length = copy(path.c_str(), &text[0], (int)text.size());
+    if (length >= (int)text.size()) {
+        text.assign((size_t)length + 1, '\0');
+        length = copy(path.c_str(), &text[0], (int)text.size());
+    }
+    text.resize((size_t)std::max(0, std::min(length, (int)text.size() - 1)));
+    return text;
+}
+
+std::string GamePatchStatus(const std::string& path) { return CopiedText(Files().Status, path); }
+
+std::string GamePatchOwner(const std::string& path) { return CopiedText(Files().Owner, path); }
+
 bool UseGameFilesLibrary(const std::wstring& libraryPath, const std::wstring& gameDir)
 {
     // altered search path: lua54.dll is found next to the library (the flag

@@ -20,13 +20,14 @@ enum class StyleChoice {
 // `excluded`: movesets never offered - groups ("fake": no attack
 // animations, "giant": a giant's, "race": a CaC race's own) and CMS codes.
 // `names`: CMS code -> list name, over the automatic one (config "style_names").
-// `search`: filter the list with the loader's search box (when the loader has one).
 void StyleMenu_Build(StyleChoice choice, const std::vector<std::string>& codes, const std::vector<std::string>& excluded,
-                     const std::map<std::string, std::wstring>& names, bool search);
+                     const std::map<std::string, std::wstring>& names);
 
-// Serves AVATAR.iggy with the extra slot and hooks the menu's AS callback.
+// Registers the menu script edits with the loader's UI library (AVATAR_LIST
+// only with `search`, config "style_search": filter the list with the loader's
+// search box) and hooks the menus' AS callbacks.
 // Data-only patches: safe right away.
-void StyleMenu_InstallDataHooks();
+void StyleMenu_InstallDataHooks(bool search);
 
 // Code patches (user-data slot count, list poll): call once Steam's DRM has
 // decrypted the code.

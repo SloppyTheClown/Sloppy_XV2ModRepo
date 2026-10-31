@@ -65,6 +65,29 @@ XV2Patcher on the image, then by a live dump (`tools\epatch_check.py`,
 Battle character struct grew 0x20 above +0xC4 (0x22CC->0x22EC,
 0x11B0->0x11D0); chara id stays at +0xB4.
 
+### 1.27 (2026-10-28)
+`port_epatches.py` now ports to every build in its `BUILDS` table (full
+address map there) and writes `epatches\<build>\`; the bridge picks the
+folder from `bin\DBXV2.exe`'s PE TimeDateStamp + SizeOfImage (1.26.01
+0x6A63732E/0x1A1F000, 1.27 0x6AAA4CB1/0x1A33000) and refuses other builds.
+1.27 vs 1.26.01, checked with `tools\hosts127.py` (hook functions compared
+instruction by instruction):
+* cave block at 0x1A32500 (slack after `.bind` again).
+* sites moved but the host code is the same except title BGM 1: the cue id
+  register is r12 instead of r15 (`44 89 64 24 ..` vs `44 89 7C 24 ..`).
+  That one failing pattern made XV2Patcher skip the rest of RevampExtra, so
+  the 1.26.01 ports on 1.27 only applied Part1-5 + AddRevampCPK.
+* hook sites 1.26.01 -> 1.27: Part1 0x299DFC->0x299EBC, Part2 0x29D2DD->
+  0x29D39D, Part3 0xCA684->0xCA734, Part4A 0x16C16F->0x16C22F, Part4B
+  0xFD411->0xFD4D1, body 0xFE389->0xFE449, CusAura2 0xE7990->0xE7A50,
+  CusAura3 0xC8866 (same), BAQ 0x7F2184->0x8000F4, BGM 0x60721D/0x58751B->
+  0x60A498/0x58806B, colour fix 0x83213E->0x84024E (write still at +0x77).
+* lobby tsd: event numbers same as 1.26.01; trigger/event-ref/NPC numbers
+  shifted again (tables per build in PostInstall.cs, from `tools\tsdmap.py`).
+  Title iggy textures: `iggymaps_1.27.txt` from `tools\iggypairs.py`.
+* simulated XV2Patcher on the clean 1.27 image: every pattern found once,
+  0 problems; not yet tested in game.
+
 ## Content conflicts and the post-install fixes
 * `data\rvp.cpk` (JUNGLE1) = 1.25.02 data2.cpk + movie/REVAMPINTRO.usm +
   data/demo/A00_01/A00_01.dem; AddRevampCPK loads it instead of data2.cpk.

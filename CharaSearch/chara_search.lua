@@ -6,9 +6,11 @@
 -- favorites (with a gold star), then the rest. Favorites are kept per Steam
 -- account in favorite_characters.sav next to this script.
 --
--- How: the loader swaps CHARASELE.iggy's ActionScript for the mod's
--- (iggy\CharaSele.abc, or CharaSele_XV2Patcher.abc over xv2ins 4.7's menu;
--- as3\CharaSele.as + as3\chara_search.as, built by ClaudeTools\iggy\menu_abc.py).
+-- How: the loader's UI library (uilib) merges the mod's edit of
+-- CHARASELE.iggy's ActionScript into the menu (iggy\CharaSele.abc, or
+-- CharaSele_XV2Patcher.abc over xv2ins 4.7's menu, each with its FFDec merge
+-- base and the game script it was built over; as3\CharaSele.as +
+-- as3\chara_search.as, built by ClaudeTools\iggy\menu_abc.py).
 -- That script shows the grid as a view of the game's list and talks to this
 -- one through the menu's AS callback (the loader's `menus` table):
 --   9902 (string) once per screen: "token\n" + per list entry
@@ -19,12 +21,10 @@
 -- The order is local only: the script sends the game its own list numbers,
 -- so nothing changes online. Research_Notes\chara-select-search.md.
 --
--- Battle Styles rebuilds the same menu script for its skill popup row. Only
--- one script can replace the game's, so while this script patches CHARASELE
--- (files.Owner says "CharaSearch") Battle Styles serves one with both, over
--- the game's script or over this one's, whichever runs first.
+-- Battle Styles edits the same menu script for its skill popup row; the
+-- library merges both edits, in whichever order the mods register.
 
-LUA_NAME = "CharaSearch"                  -- owner name of the patches and the hook; Battle Styles checks for it
+LUA_NAME = "CharaSearch"                  -- owner name of the menu edit and the hook
 
 -- Settings
 local BOX_ID = "character_search"
@@ -65,11 +65,11 @@ local function MenuSectionWanted()
   return text:match('"debug_menu"%s*:%s*true') ~= nil
 end
 
--- DBXV2.exe 1.26.01
--- SelectCharacter (CHARASELE.iggy): vtable slot 17 = 0x5e1630, its AS
+-- DBXV2.exe 1.27
+-- SelectCharacter (CHARASELE.iggy): vtable slot 17 = 0x5e2160, its AS
 -- callback CallbackUserData("user", sendType, value).
 local MENU_NAME = "chara_select"
-local SELECT_CHARA_VTABLE, USER_CALLBACK_SLOT = 0x10be328, 17
+local SELECT_CHARA_VTABLE, USER_CALLBACK_SLOT = 0x10cc558, 17
 local SEND_LIST, SEND_CURSOR = 9902, 9904
 -- Battle Styles chains the same slot under this mutex
 local CALLBACK_MUTEX = "XV2Mods_SelectCharaCallbackHook"
@@ -80,17 +80,20 @@ local ANSWER_ENTRY = -1
 -- The grid sends its cursor every frame while open (and while it waits for
 -- the answer, up to 30 frames); older than this, it is closed.
 local OPEN_SECONDS = 0.1
--- The menu file and the scripts swapped into it - only over the game's own
--- scripts: their ABC sizes and FNV-1a 64 hashes (menu_abc.py prints them)
+-- The menu file and the edits merged into it, one per version of the menu:
+-- the edited script, its FFDec merge base and the game script it was built
+-- over (menu_abc.py writes all three); the library uses the one whose game
+-- script is the menu's
 local CHARASELE_IGGY = "ui/iggy/CHARASELE.iggy"
 local SCRIPTS = {
-  {abc = "CharaSele.abc", vanillaSize = 0xb52d, vanillaHash = 0x18865d7ce449251c},             -- the cpk's menu
-  {abc = "CharaSele_XV2Patcher.abc", vanillaSize = 0xba46, vanillaHash = 0xaa2bcacb32cbd1fb},  -- xv2ins 4.7's loose menu
+  {abc = "CharaSele.abc", base = "CharaSele_base.abc", game = "CharaSele_game.abc"},  -- the cpk's menu
+  {abc = "CharaSele_XV2Patcher.abc", base = "CharaSele_XV2Patcher_base.abc",
+   game = "CharaSele_XV2Patcher_game.abc"},                                         -- xv2ins 4.7's loose menu
 }
 -- The loaded save's decrypted image, kept by the save/system singleton
--- [0x1554448] at +0x68: "#SAV", then the owning Steam id at +8 XORed with
+-- [0x15681a8] at +0x68: "#SAV", then the owning Steam id at +8 XORed with
 -- "thebecon" (as Item Search and Battle Styles read it; Xv2CoreLib SAV_File.cs)
-local SAVE_SYSTEM, SAVE_IMAGE, SAVE_STEAM_ID = 0x1554448, 0x68, 8
+local SAVE_SYSTEM, SAVE_IMAGE, SAVE_STEAM_ID = 0x15681a8, 0x68, 8
 local STEAM_ID_XOR = 0x7468656265636F6E
 
 local base = getAddress("DBXV2.exe")
@@ -358,10 +361,16 @@ function _OnInit()
     ConsolePrint(status, 3)
     return
   end
+  if not uilib then
+    menus.Unhook(MENU_NAME)
+    status = "the mod loader's UI library is missing (update XV2 Mod Loader); off"
+    ConsolePrint(status, 3)
+    return
+  end
   local refused = {}
   for _, script in ipairs(SCRIPTS) do
-    local replaced, why = files.ReplaceIggyScript(CHARASELE_IGGY, script.abc, script.vanillaSize, script.vanillaHash)
-    if not replaced then refused[#refused + 1] = script.abc .. ": " .. tostring(why) end
+    local registered, why = uilib.EditScript(CHARASELE_IGGY, script.abc, script.base, script.game)
+    if not registered then refused[#refused + 1] = script.abc .. ": " .. tostring(why) end
   end
   if #refused == #SCRIPTS then
     menus.Unhook(MENU_NAME)
@@ -400,7 +409,7 @@ end
 
 function _OnMenu()
   ui.Text("Chara search: " .. status)
-  ui.Text("Menu script: " .. (files and files.Status(CHARASELE_IGGY) or "not replaced"))
+  ui.Text("Menu script: " .. (files and files.Status(CHARASELE_IGGY) or "not edited"))
   if menus then ui.Text("Callback: " .. (menus.Status(MENU_NAME) or "not hooked")) end
   ui.Text("Character names: " .. namesNote)
   local seen = menus and menus.LastSeen(MENU_NAME, SEND_CURSOR)

@@ -1,4 +1,4 @@
-// Edits to quest, item and TP shop files for game 1.26.01. QXD and IDB
+// Edits to quest, item and TP shop files for game 1.27. QXD and IDB
 // layouts from XV2-Tools (Xv2CoreLib); EST read from the game's own files.
 #include "data.h"
 #include <algorithm>
@@ -49,12 +49,12 @@ int QxdClearRequirements(const uint8_t* src, size_t n, bool story, bool parallel
 
 int QxdUnlockFromStart(std::vector<uint8_t>& out)
 {
-    // Unlock kind at record +0x50, read by the game 1.26.01 at:
-    //   0x83e160 (unlock check): 0 = unlock at once, 1 = all requirements
+    // Unlock kind at record +0x50, read by the game 1.27 at:
+    //   0x84c270 (unlock check): 0 = unlock at once, 1 = all requirements
     //            cleared, 2 = a flag, 4 = level; 3 is not handled there
-    //   0x83e050 (shown at the counter): kind 0, or the parent (shorts +0x28
+    //   0x84c160 (shown at the counter): kind 0, or the parent (shorts +0x28
     //            type / +0x2a index) unlocked, or the quest itself cleared
-    //   0x59b910 (list filter): kind 3 is listed only once cleared
+    //   0x59c460 (list filter): kind 3 is listed only once cleared
     // Found by reverse engineering the game.
     const size_t kUnlockKind = 80;
     if (out.size() < 16 || memcmp(out.data(), "#QXD", 4)) return -1;

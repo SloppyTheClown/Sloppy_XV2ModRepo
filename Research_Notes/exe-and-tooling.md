@@ -7,7 +7,7 @@ Game 1.26.01; addresses are DBXV2.exe RVAs.
 
 ## The exe
 * `DBXV2.exe` on disk is encrypted by the Steam DRM wrapper (`.bind` section,
-  entry point RVA `0x19E5310`, signature `0xC0DEC0DF` at `0x19E5543`; `.text`
+  1.26.01: entry point RVA `0x19E5310`, signature `0xC0DEC0DF` at `0x19E5543`; `.text`
   entropy 8.0). Static analysis needs a decrypted image:
   `XV2_RevampBridge\tools\dumpimage.py` runs the game and saves one (flat
   image, file offset == RVA). An old 1 MB-chunk dump from the first sessions
@@ -21,19 +21,45 @@ Game 1.26.01; addresses are DBXV2.exe RVAs.
   immediately.
 * The 1.25.02 -> 1.26.01 global/function map: see revamp-on-1.26.md.
 
-## Global singletons (1.26.01)
+## Porting to a new game build (done for 1.26.01 -> 1.27)
+* 1.27 exe: PE TimeDateStamp `0x6AAA4CB1`, SizeOfImage `0x1A33000` (1.26.01:
+  `0x6A63732E` / `0x1A1F000`) - every exe-patching mod checks both
+  (`IsSupportedGame`) and does nothing on another build.
+* Images: `ClaudeTools\exe\img126.bin`, `img127.bin` (dumpimage.py; img127 was
+  taken with mods running, so a few hooked sites differ).
+* Work folder `ClaudeTools\exe\port127\`: `result.tsv` / `map.tsv` = every
+  address the sources use, old -> new (codematch.py, globals by xref count);
+  `files.txt` = the sources holding addresses; `apply_map.py [--write]`
+  rewrites them; `check_bytes.py` / `check_sites.py` = byte arrays the sources
+  expect that 1.27 no longer has (prints what 1.27 has there);
+  `rel32_runs.py` = call/jmp arrays to recompute; `cpkdiff.py` = changed game
+  files between two installs; `tnl_ids.py` = lobby NPC IDs old -> new.
+  `ClaudeTools\exe\fndiff.py` diffs the struct offsets / immediates of matched
+  functions.
+* What moved in 1.27 besides addresses: the save manager's fields after
+  +0x2000 shifted +0x10 (inventory 0x20e8, skills 0x40a8, SYSFLAG block
+  0xe710, characters 0x120d0, PlayData 0x12670; the 0xe880 slot stride and
+  the slot/option fields did not); the DLC "owned2" bit block gained a bit
+  (still ends `mov r8d,edi; mov edx,0x224b`); lobby_npc_list.tnl got 3 new
+  NPCs at 1046-1048, so later IDs shifted (Cross Versus Guide 1049, Dastar
+  1315, Polisher 1330); ITEMLIST's ABC, CHARASELE and xgcore.dll's texture
+  limit site are unchanged.
+* Then build everything and run the offline checks: they caught the NPC ID
+  shift (General_QoL `tests\run.bat`).
+
+## Global singletons (1.27)
 | global | what |
 |---|---|
-| `[0x15545b0]` | save / character manager ("mgr"): slot int at mgr+8+0x44, per-character SYSFLAGs, quest progress, ACCFLAGs, options (save-flags-and-unlocks.md) |
-| `[0x1554458]` | quest/progress manager: list +0xb10, QXD lookup via +0x928, voice player via +0x948 |
-| `[0x1554490]` | Sound::System (sound.md) |
-| `[0x1554448]` | save/system singleton Revamp's patches use (old 1.25 `[0x1681C08]`); +0x68 = decrypted save image (save-flags-and-unlocks.md) |
+| `[0x1568310]` | save / character manager ("mgr"): slot int at mgr+8+0x44, per-character SYSFLAGs, quest progress, ACCFLAGs, options (save-flags-and-unlocks.md) |
+| `[0x15681b8]` | quest/progress manager: list +0xb10, QXD lookup via +0x928, voice player via +0x948 |
+| `[0x15681f0]` | Sound::System (sound.md) |
+| `[0x15681a8]` | save/system singleton Revamp's patches use (old 1.25 `[0x1681C08]`); +0x68 = decrypted save image (save-flags-and-unlocks.md) |
 | `[0x1554480]` | demo (cutscene) system |
-| `[0x156b408]` | Battle::CameraManager; `[0x15712e8]` Lobby::CameraManager (boot-and-camera.md) |
+| `[0x157f168]` | Battle::CameraManager; `[0x15851c8]` Lobby::CameraManager (boot-and-camera.md) |
 | `[0x15544d8]` | runtime chara table (code at entry+4) |
 
 ## File request hook (shared by the file-editing mods)
-* Every data file is read through a request object: vtable rva `0xf9b270`,
+* Every data file is read through a request object: vtable rva `0xfa92f0`,
   path inline at +8, inner data object at +0x128 (vtable `0xf8dfa0`: data
   +0x48, size +0x38). Consumers call request vt+0x20 (data) and vt+0x38 (size).
 * The mods repoint vt+0x18/+0x20/+0x30/+0x38 (.rdata, patched immediately) and
@@ -49,6 +75,11 @@ Game 1.26.01; addresses are DBXV2.exe RVAs.
   (`XV2ModLoader\src\file_patches.cpp`, Lua `files.ReplaceIggyScript`), which
   hooks only once a script registers a file - after launch, but before any
   menu iggy it serves is read.
+* Inside the loader (2026-10-18, `Lib\src\file_patches.cpp`): one hook, and
+  per file a pipeline of stages from any number of mods (`XV2Files_AddStage`,
+  `sdk\xv2_files.h`), each getting the file as the previous left it - the
+  way for new mods to share a file instead of each adding a hook to the
+  chain. The old `Replace*` patches are stages that run first.
 
 * **Chain cost (fixed 2026-10-11):** every hook's size slot called the next
   mod's data AND size (twice), and its data slot the next size, before
@@ -144,6 +175,11 @@ Game 1.26.01; addresses are DBXV2.exe RVAs.
   the loader's ReplaceIggyAbc on vanilla ITEMLIST.iggy + ItemList.abc must
   give the expected bytes, and refuse an already patched file
 * `ClaudeTools\luatest\run.bat` - offline check of the loader's Lua API (incl. `files`)
+* `ClaudeTools\libtest\` - in-game test mod `mods\LibTest` (`Install_LibTest.bat` /
+  `Uninstall_LibTest.bat`): `files.ReplaceFile` (pause menu "Continue" ->
+  "CONTINUE"), Lua `files.ReadGameFile/Owner/Owners/Status/Remove`, every `ui`
+  widget + an overlay window; writes `mods\LibTest\lib_test.log`.
+  `lua_syntax_check.ps1 -Script <file.lua>`: syntax check with the built lua54.dll
 * `ClaudeTools\gamefilestest\run.bat` - offline: the loader library's
   `XV2Files_ReadGameFile/FindGameFile/ReadGameFilePart` on the PC's game
   (loose + cpk entries, compressed tails): whole reads compared with
@@ -157,7 +193,7 @@ Game 1.26.01; addresses are DBXV2.exe RVAs.
 * `ClaudeTools\qxd_chara_unlocks.py [game]` - every quest's QXD Chara_Unlock
   entries (loose data first, then the cpks)
 * `itemlist_probe.py` - the open Menu::ItemList's fields and shown entries
-  (ui-iggy-and-textures.md "Item lists")
+  (ui-item-lists.md "Item lists")
 * `threadmap.py` - which game thread runs the loader / Present / Iggy ticks
   (stack sampling, no debugger)
 * `ClaudeTools\iggy\pcode_flow.py <orig.pcode> <rebuilt.pcode> [method ...]` -
@@ -166,9 +202,20 @@ Game 1.26.01; addresses are DBXV2.exe RVAs.
 * `ClaudeTools\iggy\roundtrip_check.py <ffdec-cli.jar> [avatar|myset|avatarlist|lobbymap]` -
   vanilla (cpk) vs rebuilt (generated header) menu ABC: pcode_flow walk +
   every lookupswitch's cases resolved to their code; run after editing a menu .as
+* `ClaudeTools\iggy\ffdec_base.py <ffdec-cli.jar> <menu.iggy> <class> <out.abc>` -
+  the game's menu ABC with one class recompiled by FFDec unchanged: the
+  merge base for an FFDec-made mod (ui-iggy-and-textures.md "Several mods
+  editing one menu script")
+* `XV2ModLoader\build\Release\xv2ui.exe` (UILib\tool) - `roundtrip`
+  (every .iggy/.iggytex/.abc in a folder), `dump`, `code <file> <method>`,
+  `traits <file> [class]`, `merge <game> [-base b] <mods...> [-o out] [-expect x]`
 * `ClaudeTools\iggy\charasele\edit_charasele.py` - decompiled CharaSele.as ->
   BattleStyles' as3 CharaSele sources (style row + FFDec loss fixes)
 * `ClaudeTools\gamefiles\` - lobby/quest file decoders and the mods' offline file
   check (README.txt there); `ClaudeTools\ticktest\` - Combined Supers' Tick() offline
+* `ClaudeTools\cac_supers_report.py` - reads the save's CaCs (race, body, level,
+  STR/BLA, a preset's QQ Bang) and prints vanilla vs Combined Supers stats;
+  `--ref SLOT DAMAGE` scales one measured super's damage to the others. Analysis
+  only (the mod never reads the save); TP gear is not counted
 * `ClaudeTools\_claude_xv2mod\` - the original Cheat Engine prototype (Lua) of
   Combined Supers + the old image dump. Historical reference.

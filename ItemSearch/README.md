@@ -1,11 +1,13 @@
 # Item Search
 
+**Version 1.1.0** · for Dragon Ball Xenoverse 2 **1.27** · needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
+
 A search box over Dragon Ball Xenoverse 2's item lists (equipment screen:
 torso, Super Soul, ...). Type part of an item's name and the list shows only
 the items whose name contains it (upper/lower case doesn't matter).
 
-Game version 1.26.01. Needs a current [XV2 Mod Loader](../XV2ModLoader)
-(one with the `files` and `search` functions).
+Game version 1.27. Needs a current [XV2 Mod Loader](../XV2ModLoader)
+(one with the UI library, `Lib\XV2UserInterfaceLib.dll`).
 
 ## Installing
 
@@ -19,13 +21,14 @@ DB Xenoverse 2\
         mods\
             ItemSearch\
                 item_search.lua
-                ItemList.abc           <- the item list menu's new script
+                ItemList.abc           <- the item list menu's script edit
+                ItemList_base.abc      <- what the edit was made from
+                ItemList_game.abc
 ```
 
-No game file is replaced: the loader swaps the script into the game's own
-item list menu as the game reads it. If another mod has its own
-`ITEMLIST.iggy`, it is left alone: the search still filters, but the list
-only shows the result when it is opened again.
+No game file is replaced: the loader's UI library merges the script edit
+into the game's own item list menu as the game reads it, together with
+other mods' edits of the same menu.
 
 To remove it, delete the `ItemSearch` folder (it also holds your
 favorites, `favorites.sav`).

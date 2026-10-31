@@ -5,16 +5,16 @@ collision-cache rebuild, the debug menu's Lua side. Overlay/loader internals
 are in loader-and-steam-deck.md.
 
 ## Chain (1.26.01, found with ClaudeTools\noclipprobe.py, ClaudeTools\lobbybodyprobe.py)
-* `[exe+0x15712f8]` = CLobbyPlayer; +0x5b0 = PhysChar@Lobby (vtable 0x1094998).
+* `[exe+0x15851d8]` = CLobbyPlayer; +0x5b0 = PhysChar@Lobby (vtable 0x1094998).
 * PhysChar: +8 hknpWorld, +0x10 chara, +0x80 body handle (+0x10 = hknpBodyId,
   low 24 bits), +0x88 character context, +0xa0 position, +0xec in-world flag.
-  Step = vtable slot 6 (0x4b3c60): 0x4b4160 (result -> +0xfc), 0x4b4ed0,
+  Step = vtable slot 6 (0x4b4590): 0x4b4160 (result -> +0xfc), 0x4b4ed0,
   character state machine 0xc97780, then game physics commands 0x308810 /
   0x3086c0 (velocity, cmd 0x21000c) / 0x308500. Commands are allocated by
   0x302e50, header = gameType<<16 | size.
 * hknp command printer 0xcb6920 (jump table 0xcb7730 = type -> name, e.g. 0x1b
   setBodyCollisionFilterInfo, 0x1c updateBodyFlags); processor 0xcb6330
-  (table 0xcb6830): 0x1b -> 0xc90820, 0x1c -> 0xc90ac0 enable / 0xc90bc0 disable.
+  (table 0xcb6830): 0x1b -> 0xc9e590, 0x1c -> 0xc9e830 enable / 0xc90bc0 disable.
 * hknpWorld: +0x20 bodies (0xb0 each), +0x38 previous quantized AABB per body
   (16 bytes), +0x468 collision filter (the only filter object in the world),
   +0x470 listener, +0x820 [+8] motions (16 bytes each), +0xa50 lock.
@@ -24,8 +24,8 @@ are in loader-and-steam-deck.md.
   filterInfo 0; its keyframed companion on layer 18 sits at the same spot.
 
 ## Collision filter
-hknpCustomGroupCollisionFilter<6,5,5,16> (vtable 0xfbf3f8, same slots as its
-GroupBase). Pair check 0x13dd50 / 0x13de40 / 0x13dec0: same non-zero system
+hknpCustomGroupCollisionFilter<6,5,5,16> (vtable 0xfcd4e8, same slots as its
+GroupBase). Pair check 0x13de10 / 0x13de40 / 0x13dec0: same non-zero system
 group (bits 16-31) -> subsystem rule (bits 6-10 / 11-15); otherwise
 `table[layerB] & (1 << layerA)`, table = filter +0x28, 64 x u64, layer = low 6
 bits. Slots 5 and 7 (0x25a40) return true. Live lobby: layer 0 row all ones;
@@ -36,8 +36,8 @@ rows 56-63 = 0x1; statics on layers 0/1/2/6/7/10/12/25, dynamic/keyframed on
 * Writing filterInfo 63 + clearing layer 63 in the table: NPCs became
   walk-through, walls/floor did not (seen in game). Havok only runs the filter
   when a pair is created; the player's pairs with the level already existed.
-* Fix: copy hknpWorld::rebuildBodyCollisionCaches (0xc90eb0, called by
-  0xc90820 unless its 4th arg is set) for an active dynamic body: motion entry
+* Fix: copy hknpWorld::rebuildBodyCollisionCaches (0xc9ec20, called by
+  0xc9e590 unless its 4th arg is set) for an active dynamic body: motion entry
   byte +0xb := 0 unless 0xff; world+0x38 entry := 0x7fffff7fff7fffff, 0 (the
   value unused bodies have = "never seen", so the broadphase re-adds the pairs);
   body +0x48 |= 1. Seen in game: walls, floors, ceilings, NPCs all pass.
@@ -49,15 +49,15 @@ rows 56-63 = 0x1; statics on layers 0/1/2/6/7/10/12/25, dynamic/keyframed on
   filter and filterInfo stock afterwards). Dead-end theory: "bit 1 deletes the
   pairs re-added that step" - the game's own setBodyCollisionFilterInfo sets it
   too. The game queues physics changes and applies them at a safe point
-  (XG::HavokWorld command processor 0x303b90, from JobCallbackPreUpdatePhys;
+  (XG::HavokWorld command processor 0x303e00, from JobCallbackPreUpdatePhys;
   filter command type 0x16, queued by 0x308600), so a single off-thread write
   is likely lost. What worked: `ClaudeTools\lobbycacherebuild.py full 10` (full
   rebuild incl. bit 1, 10x 100 ms apart) brought collision back (seen in
   game). The script now repeats the full rebuild 10 times, every 6 frames,
   after off - works in game when unticked in open air.
 * Unticking while inside a wall still left no collision: the body had gone to
-  sleep (flags 0x10042, active bit 8 clear - lobbybodyprobe.py). 0xc90eb0
-  wakes a sleeping dynamic body first (`call 0xc754d0`); the script skipped it.
+  sleep (flags 0x10042, active bit 8 clear - lobbybodyprobe.py). 0xc9ec20
+  wakes a sleeping dynamic body first (`call 0xc83240`); the script skipped it.
   Now the rebuilds wait until the body is awake (the player moves). Seen in
   game: collision comes back; a player unticked inside a wall stays trapped
   in it (not pushed out) - accepted by the user, ticking noclip again frees them.
@@ -65,7 +65,7 @@ rows 56-63 = 0x1; statics on layers 0/1/2/6/7/10/12/25, dynamic/keyframed on
 * The table is symmetric (checked on all 64 x 64 bits of the live lobby
   table), so a stock row also gives that layer's bit in every other row.
 * Camera: the lobby follow camera (CameraLocal@Lobby, vtable 0x1074d70) keeps
-  out of walls with 0x3ba8e0 -> 0x30a4e0, a wrapper around hknpWorld castShape
+  out of walls with 0x3bab60 -> 0x30a750, a wrapper around hknpWorld castShape
   (0xc98880, found via its "TtWorldCastShape" timer string; castRay 0xc987c0,
   getClosestPoints 0xc98a20, queryAabb 0xc981a0). Its 5th arg is the query
   filterInfo, 0x16 = layer 22; the wrapper uses the world filter (+0x468).
@@ -76,32 +76,32 @@ rows 56-63 = 0x1; statics on layers 0/1/2/6/7/10/12/25, dynamic/keyframed on
   game's own flight is used.
 
 ## Flight speed (General_QoL `lobby_flight_speed`, static analysis)
-* PhysChar@Lobby step 0x4b3c60: rbx = PhysChar, [rbx+0x10] = character.
+* PhysChar@Lobby step 0x4b4590: rbx = PhysChar, [rbx+0x10] = character.
   Character +0x850 = this step's move delta (returned by 0x4879d0). Velocity
-  = delta * (1/dt) * xmm10, at 0x4b3e84-0x4b3e91 (stored to [rbp-0x20]).
-* xmm10 = 1.0, or 0.025 when |delta|^2 > 1.5 (0x4b3d51 / 0x4b3d5a) - a
+  = delta * (1/dt) * xmm10, at 0x4b47b4-0x4b3e91 (stored to [rbp-0x20]).
+* xmm10 = 1.0, or 0.025 when |delta|^2 > 1.5 (0x4b4681 / 0x4b468a) - a
   teleport guard, skipped while [character+0x39c] or 0x4888f0(). Every path
-  meets at 0x4b3d63 (`48 8b 4b 10 bf 01 00 00 00`; rax free - 0x4b3d76 is
+  meets at 0x4b4693 (`48 8b 4b 10 bf 01 00 00 00`; rax free - 0x4b46a6 is
   `mov eax,[rbx+0xf0]`). Probably why Revamp's x1.4 lobby.bac boost stalls:
   faster BAC motion -> longer delta -> guard (not proven).
-* Airborne: character +0x3b4 bits 0xc; 0x4868b0 sets bit 4 above 0.5 height
+* Airborne: character +0x3b4 bits 0xc; 0x4871e0 sets bit 4 above 0.5 height
   (0x488650) and clears it at <= 0.21. So jumps/falls count too.
-* General_QoL's cave at 0x4b3d63 multiplies xmm10 only when rbx ==
-  [[exe+0x15712f8]+0x5b0] (local player) and airborne. Not seen in game
+* General_QoL's cave at 0x4b4693 multiplies xmm10 only when rbx ==
+  [[exe+0x15851d8]+0x5b0] (local player) and airborne. Not seen in game
   (Havok may clamp, the animation speed stays the game's).
 * Dead end: lobby.bac speeds (Revamp's approach) - the stall above, and plain
   flight has no BAC speed entry. MOVE_SPEED/BOOST_SPEED strings are battle
   buffs (0x7e50d0).
 * Battle (found in Training with ClaudeTools\battlebodyprobe.py + ad-hoc scans):
   * Dead end: no live object has the PhysChar@Battle vtable (0xf652d0). The
-    battle characters' class is **PhysVarChar@Battle, vtable 0xf65588**, found
+    battle characters' class is **PhysVarChar@Battle, vtable 0xf735e8**, found
     by scanning for pointers to the hknpWorld (world +0x468 = the one
-    hknpCustomGroupCollisionFilter object, vtable 0xfbf3f8; refs to the filter
+    hknpCustomGroupCollisionFilter object, vtable 0xfcd4e8; refs to the filter
     -> world 0x...20b0; refs to the world -> owners by RTTI).
   * PhysVarChar: +8 hknpWorld, +0x10 Mob, **+0x78 body handle** (+0x10 =
-    body id; the lobby has it at +0x80). Mob@Battle (vtable 0xf5e020) +0x4e0
+    body id; the lobby has it at +0x80). Mob@Battle (vtable 0xf6c078) +0x4e0
     = its PhysVarChar.
-  * Player: `[[[exe+0x156b408]+8]+0x90]` = the Mob the Battle::CameraManager's
+  * Player: `[[[exe+0x157f168]+8]+0x90]` = the Mob the Battle::CameraManager's
     director follows (directors at +8/+0x18/+0x20 all held it). Every battle
     camera (CameraLocal/Default/Motion/Scouter, +0x3a0) targeted that Mob and
     none the training partner, so it is the local player. Other static chains
@@ -124,12 +124,12 @@ rows 56-63 = 0x1; statics on layers 0/1/2/6/7/10/12/25, dynamic/keyframed on
     flags 0x41 (static), motion id 0, +0x48 = 0 (battlebodyprobe.py) - Havok's
     leavingBroadPhaseBehavior "freeze" (the string is in hknpWorldCinfo's
     reflection; enum names are stripped, so the offset wasn't found there).
-  * The body integration (two copies: 0xd1a55f, 0xdad0de) tests the body's
+  * The body integration (two copies: 0xd282cf, 0xdbae4e) tests the body's
     quantized AABB against the limits (0x7ffef07ffe7ffef0 / 0xfffffefffeffffff,
     mask 0x8000008000800000) and if outside posts event type 0xb =
     BodyExitedBroadPhaseEvent (header at stack: u16 0x10, 0x0400, type 0xb;
     +8 body id from body +0x70) through [world +0x3b0] vtable +0x18. The
-    printer 0xce7070 is reached from the dispatcher 0xcbc9b0 (type = u16
+    printer 0xcf4de0 is reached from the dispatcher 0xcca720 (type = u16
     header +4). The code after the event is the same either way, so the
     freeze is done by the event's handler (not found; not needed).
   * Fix (debug_menu.lua, in memory only): each 56-byte event block starts

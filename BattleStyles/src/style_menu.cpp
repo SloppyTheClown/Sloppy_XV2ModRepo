@@ -3,13 +3,13 @@
 //  (phase 4, per character slot and preset; mod.cpp gives each battle player
 //  the style of the save slot it came from).
 //
-//  Customize -> equip tab gets an 8th button under Super Soul. It works like
+//  Customize -> Skills gets a 9th button under the skills. It works like
 //  the other equipment: it shows the equipped style, and opens the game's
 //  own item list (AVATAR_LIST) to pick one. Research_Notes\battle-styles-ui.md
 //  "Equip screen UI" has the layout this relies on.
 //
 //  Pieces:
-//  * AVATAR.iggy is served with a rebuilt ActionScript (as3\Avatar.as ->
+//  * AVATAR.iggy gets a rebuilt ActionScript (as3\Avatar.as ->
 //    avatar_abc.h via ClaudeTools\iggy\menu_abc.py): the button reads user-data
 //    slots 96 (label) and 97 (count) and sends 240 to open the list.
 //  * CHARASELE.iggy (character select skill popup) and AVATAR_SET.iggy (the
@@ -17,18 +17,17 @@
 //    row. Its text rides on a string the game already sends (the Super Soul
 //    name / the last skill name) after a tab, which the new AS splits off.
 //  * The menu object (EditChara) is made with 2 more user-data slots, and
-//    with its AVATAR_LIST also in the Customize mode (3), which has none.
+//    with its AVATAR_LIST also in the Customize modes (3, 4), which have none.
 //  * Its AS callback: 240 opens the list with the styles; whenever the
-//    game pushes the cloth slots, slots 96/97 get the equipped style.
+//    game pushes the skill slots, slots 96/97 get the equipped style.
 //  * Its list poll: when the style list closes, the picked entry is saved.
 //  * The style list's search: the XV2 Mod Loader's search box (the one Item
 //    Search shows on the same screen) filters the entries; AVATAR_LIST.iggy
-//    is served with a rebuilt ActionScript (as3\AvatarList.as) that redraws
+//    gets a rebuilt ActionScript (as3\AvatarList.as) that redraws
 //    the open list when the game sends it a new count.
-//  * Chara Search (its own DLL) rebuilds CHARASELE.iggy's script too,
-//    for the character select's search and favorites. Only one script can
-//    replace the game's, so while it is active this mod serves one with both
-//    (charasele_search_abc.h) over the game's or over Chara Search's.
+//  * Every script edit goes through the loader's UI library (XV2UI,
+//    sdk\xv2_ui.h), which merges it with other mods' edits of the same menu
+//    (Chara Search's CHARASELE, ...); the mod has no file hook of its own.
 //  * The choice goes to equipped_styles.sav in the mod's folder, never the
 //    save file, per Steam account, character slot and loadout preset
 //    (layout below). The preset menu (EditMyset) is hooked so saving or
@@ -39,15 +38,13 @@
 #include "avatarlist_abc.h"
 #include "charasele_abc.h"
 #include "charasele_patcher_abc.h"
-#include "charasele_search_abc.h"
-#include "charasele_patcher_search_abc.h"
-#include "charasearch_ids.h"
 #include "myset_abc.h"
 #include "game_files.h"
-#include "iggy_abc.h"
 #include "json.h"
 #include "mod.h"
 #include "xv2_search.h"
+#include "xv2_ui.h"
+#include <intrin.h>
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -83,10 +80,10 @@ static bool StylesReady();
 // CMS (Xv2CoreLib CMS/Parser.cs): count at +8, table offset at +0xc, 0x54
 // bytes per entry, code at +4, string fields as file offsets at +0x20 +
 // field * 4 (0 = none). A value "../X/Y" means chara/X/Y.*, anything else
-// chara/<code>/<value>.* (the path getter 0x2c5510).
+// chara/<code>/<value>.* (the path getter 0x2c5610).
 static const size_t kCmsCount = 8, kCmsTable = 0xc, kCmsEntrySize = 0x54, kCmsCode = 4, kCmsStrings = 0x20;
 static const int kEanField = 1, kBacField = 7, kBcmField = 8;  // the parts that make a moveset
-// CMS entry +0x10 (eternity CmsFile.h unk_10): a size class, 0..6 in 1.26.01.
+// CMS entry +0x10 (eternity CmsFile.h unk_10): a size class, 0..6 in 1.27.
 // 5 = the Great Apes (OSV OSB OBB OSN) and Shenron (SIN XAS), 6 = Cell Max
 // (SIM SIH); every fighter is 0..4 (Broly, Dodoria, Guru 4). Giant movesets
 // leave a CaC lying on the ground. Fits the data (ClaudeTools\battle_styles\
@@ -316,15 +313,15 @@ struct GameWString {
     size_t size;
     size_t capacity;
 };
-// One AVATAR_LIST entry (0x28 bytes, list opener template 0x4fcac0).
+// One AVATAR_LIST entry (0x28 bytes, list opener template 0x4fd5a0).
 struct ListEntry {
     GameWString name;
-    int32_t valid;    // 1 = selectable (0x5038f0 ignores the rest)
+    int32_t valid;    // 1 = selectable (0x5043d0 ignores the rest)
     int32_t unknown;  // 0 in every vanilla list
 };
 static_assert(sizeof(ListEntry) == 0x28, "AVATAR_LIST entry");
-// The list's contents as 0x503970 takes them: default entry, then a
-// std::vector<ListEntry> it copies (0x503220; only begin/end are read).
+// The list's contents as 0x504450 takes them: default entry, then a
+// std::vector<ListEntry> it copies (0x503d00; only begin/end are read).
 struct ListParam {
     int32_t    defaultIndex;
     int32_t    padding;
@@ -355,7 +352,7 @@ static ListEntry ListEntryFor(const std::wstring& name)
     entry.valid = 1;
     return entry;
 }
-// config "style_search" (set by StyleMenu_Build): without it AVATAR_LIST is
+// config "style_search" (set by StyleMenu_InstallDataHooks): without it AVATAR_LIST is
 // left alone and the list is not filtered.
 static volatile LONG g_searchWanted = 0;
 static bool SearchWanted() { return InterlockedCompareExchange(&g_searchWanted, 0, 0) != 0; }
@@ -490,9 +487,8 @@ std::string StyleMenu_MovesetFor(const std::string& code, int charaId)
 }
 
 void StyleMenu_Build(StyleChoice choice, const std::vector<std::string>& codes, const std::vector<std::string>& configExcluded,
-                     const std::map<std::string, std::wstring>& configNames, bool search)
+                     const std::map<std::string, std::wstring>& configNames)
 {
-    InterlockedExchange(&g_searchWanted, search ? 1 : 0);
     g_styleChoice = choice;
     std::vector<uint8_t> cms, msg;
     std::string cmsFrom, msgFrom;
@@ -503,9 +499,9 @@ void StyleMenu_Build(StyleChoice choice, const std::vector<std::string>& codes, 
     // Every CMS entry with a body animation, BAC and combo tree, the first of
     // each distinct (EAN, BAC, BCM) set - variants sharing a moveset show once.
     // Sets whose files exist nowhere are left out: e.g. Fortune Teller Baba
-    // (URN) names chara/URN/URN.ean, which no cpk or loose file has (1.26.01:
+    // (URN) names chara/URN/URN.ean, which no cpk or loose file has (1.27:
     // URN, SLM, PGS, YRN, GNE - ClaudeTools\battle_styles\missingfiles.py). The game
-    // appends _PLAYER to the BAC and BCM names (path getter 0x2c5510).
+    // appends _PLAYER to the BAC and BCM names (path getter 0x2c5610).
     std::vector<std::string> withFiles;
     std::map<std::string, std::string> eanOf;  // first code -> its EAN ("GOK/GOK")
     std::map<std::string, const RaceMoveset*> raceOf;  // first code -> the race whose own moveset it is
@@ -708,7 +704,7 @@ static bool StylesReady() { return InterlockedCompareExchange(&g_stylesReady, 0,
 // choices alone): Steam account -> save
 // character slot -> preset ->
 // CMS code. Presets are the game's 8 loadout records per character (0x68
-// bytes each at character + 0xf4, copied by 0x5064a0): record 0 is the main
+// bytes each at character + 0xf4, copied by 0x506f80): record 0 is the main
 // (current) loadout everything uses, 1..7 the saved presets. The equip slot
 // and battles use preset 0; saving or loading a preset copies the style
 // along with the record (EditMyset hook below).
@@ -716,11 +712,11 @@ static bool StylesReady() { return InterlockedCompareExchange(&g_stylesReady, 0,
 // Files from before presets ({"<slot>": "<code>"}) are read as preset 0 of
 // the current account and rewritten in this form on the next change.
 
-// The save manager: loaded character slot = int at [0x15545b0] + 8 + 0x44,
+// The save manager: loaded character slot = int at [0x1568310] + 8 + 0x44,
 // 0..7, already set at the title screen (Research_Notes\save-and-flags.md).
-static const uintptr_t kSaveManager = 0x15545b0, kLoadedSlot = 8 + 0x44;
+static const uintptr_t kSaveManager = 0x1568310, kLoadedSlot = 8 + 0x44;
 static const int kCharacterSlots = 8;
-static const int kPresets = 8;      // records per character (EditMyset, 0x5064a0)
+static const int kPresets = 8;      // records per character (EditMyset, 0x506f80)
 static const int kMainPreset = 0;   // the loadout in use
 
 typedef std::map<int, std::string> PresetStyles;    // preset -> CMS code
@@ -739,10 +735,10 @@ static int LoadedSlot()
 }
 
 // The loaded save's decrypted image, kept whole by the save/system singleton
-// [0x1554448] at +0x68 (1.26.01; matched byte for byte against the decrypted
+// [0x15681a8] at +0x68 (1.27; matched byte for byte against the decrypted
 // DBXV2.sav, ClaudeTools\save\steamid_probe.py). The image starts "#SAV" and holds
 // the owning Steam id at +8, XORed with "thebecon" (Xv2CoreLib SAV_File.cs).
-static const uintptr_t kSaveSystem = 0x1554448;
+static const uintptr_t kSaveSystem = 0x15681a8;
 static const uintptr_t kSaveImage = 0x68;
 static const uintptr_t kSaveImageSteamId = 8;
 static const uint64_t kSteamIdXor = 0x7468656265636F6E;
@@ -954,205 +950,100 @@ static void CopyPreset(int from, int to)
 }
 
 // ------------------------------------------------------- the menu iggys ---
-// File request class (other mods use the same hook, chained under
-// one mutex): vtable slots 3/4 return the file's data, 6/7 its size; the
-// path is stored inline at +8 (up to 0x118 chars).
-static const uintptr_t kRequestVtable = 0xf9b270;
-static const size_t kRequestPath = 8, kRequestPathMax = 0x118;
+// Every menu edit goes to the loader's UI library (XV2UI, sdk\xv2_ui.h),
+// which merges it with the other mods' edits of the same menu (Chara
+// Search's CHARASELE search and favorites, ...) instead of one mod's script
+// replacing the other's. Each script comes with its FFDec merge base and the
+// game script it was built over (ClaudeTools\iggy\menu_abc.py). CHARASELE
+// has two: xv2ins 4.7 installs its own loose CHARASELE.iggy (its CharaSele
+// calls an XV2Patcher class), so everyone with xv2patcher has that one, not
+// the cpk's.
+static const char kUiOwner[] = "BattleStyles";
 
-// The menus served with a rebuilt ActionScript (ClaudeTools\iggy\menu_abc.py),
-// each only over a script it was built from.
-struct AbcVariant {
-    const char*    source;      // whose script it is, for the log
-    uint32_t       vanillaAbcSize;
-    uint64_t       vanillaAbcHash;
+struct MenuScript {
+    const char*    source;  // whose script it was built over, for the log
     const uint8_t* abc;
     size_t         abcSize;
+    const uint8_t* base;
+    size_t         baseSize;
+    const uint8_t* game;
+    size_t         gameSize;
 };
-struct MenuIggy {
-    const char*       pathSuffix;  // lower case, '/' (data/ui/iggy/<NAME>.iggy)
-    const char*       fileName;    // for the log
-    const char*       lostFeature; // logged when it cannot be patched
-    const AbcVariant* variants;
-    size_t            variantCount;
-    const AbcVariant* searchVariants;      // instead, while Chara Search is active (null: none)
-    size_t            searchVariantCount;
-    volatile LONG     servedPatched;  // the last copy the game got was the rebuilt one
+struct MenuEdit {
+    const char*       path;         // as registered and as the loader reports its status
+    const char*       lostFeature;  // logged when no script could be registered
+    const MenuScript* scripts;
+    size_t            scriptCount;
 };
-static const AbcVariant kAvatarVariants[] = {
-    {"vanilla", kVanillaAvatarAbcSize, kVanillaAvatarAbcHash, kAvatarAbc, sizeof(kAvatarAbc)}};
-// xv2ins 4.7 installs its own loose CHARASELE.iggy (its CharaSele calls an
-// XV2Patcher class), so everyone with xv2patcher has that one, not the cpk's.
-static const AbcVariant kCharaSeleVariants[] = {
-    {"vanilla", kVanillaCharaSeleAbcSize, kVanillaCharaSeleAbcHash, kCharaSeleAbc, sizeof(kCharaSeleAbc)},
-    {"xv2patcher 4.7", kVanillaCharaSelePatcherAbcSize, kVanillaCharaSelePatcherAbcHash, kCharaSelePatcherAbc,
-     sizeof(kCharaSelePatcherAbc)}};
-// With Chara Search's search in it, over the game's scripts or the ones
-// Chara Search serves (its file hook may run before this one).
-static const AbcVariant kCharaSeleSearchVariants[] = {
-    {"vanilla", kVanillaCharaSeleSearchAbcSize, kVanillaCharaSeleSearchAbcHash, kCharaSeleSearchAbc,
-     sizeof(kCharaSeleSearchAbc)},
-    {"xv2patcher 4.7", kVanillaCharaSelePatcherSearchAbcSize, kVanillaCharaSelePatcherSearchAbcHash,
-     kCharaSelePatcherSearchAbc, sizeof(kCharaSelePatcherSearchAbc)},
-    {"Chara Search's", kCharaSearchCharaSeleAbcSize, kCharaSearchCharaSeleAbcHash, kCharaSeleSearchAbc,
-     sizeof(kCharaSeleSearchAbc)},
-    {"Chara Search's xv2patcher 4.7", kCharaSearchCharaSelePatcherAbcSize, kCharaSearchCharaSelePatcherAbcHash,
-     kCharaSelePatcherSearchAbc, sizeof(kCharaSelePatcherSearchAbc)}};
-static const AbcVariant kAvatarListVariants[] = {
-    {"vanilla", kVanillaAvatarListAbcSize, kVanillaAvatarListAbcHash, kAvatarListAbc, sizeof(kAvatarListAbc)}};
-static const AbcVariant kMysetVariants[] = {
-    {"vanilla", kVanillaMysetAbcSize, kVanillaMysetAbcHash, kMysetAbc, sizeof(kMysetAbc)}};
-static MenuIggy g_avatarIggy = {"ui/iggy/avatar.iggy", "AVATAR.iggy", "no Battle Style slot",
-                                kAvatarVariants, _countof(kAvatarVariants), nullptr, 0, 0};
-static MenuIggy g_charaSeleIggy = {"ui/iggy/charasele.iggy", "CHARASELE.iggy", "no Battle Style row in the skill popup",
-                                   kCharaSeleVariants, _countof(kCharaSeleVariants),
-                                   kCharaSeleSearchVariants, _countof(kCharaSeleSearchVariants), 0};
-static MenuIggy g_mysetIggy = {"ui/iggy/avatar_set.iggy", "AVATAR_SET.iggy", "no Battle Style row in the Presets panel",
-                               kMysetVariants, _countof(kMysetVariants), nullptr, 0, 0};
+// One script of a menu header (k<prefix>Abc / BaseAbc / GameAbc).
+#define MENU_SCRIPT(source, prefix)                                                                    \
+    {source, k##prefix##Abc, sizeof(k##prefix##Abc), k##prefix##BaseAbc, sizeof(k##prefix##BaseAbc), \
+     k##prefix##GameAbc, sizeof(k##prefix##GameAbc)}
+static const MenuScript kAvatarScripts[] = {MENU_SCRIPT("vanilla", Avatar)};
+static const MenuScript kMysetScripts[] = {MENU_SCRIPT("vanilla", Myset)};
+static const MenuScript kAvatarListScripts[] = {MENU_SCRIPT("vanilla", AvatarList)};
+static const MenuScript kCharaSeleScripts[] = {MENU_SCRIPT("vanilla", CharaSele),
+                                               MENU_SCRIPT("xv2patcher 4.7", CharaSelePatcher)};
+#undef MENU_SCRIPT
+static const MenuEdit g_avatarEdit = {"ui/iggy/AVATAR.iggy", "no Battle Style slot", kAvatarScripts,
+                                      _countof(kAvatarScripts)};
+static const MenuEdit g_mysetEdit = {"ui/iggy/AVATAR_SET.iggy", "no Battle Style row in the Presets panel",
+                                     kMysetScripts, _countof(kMysetScripts)};
+static const MenuEdit g_charaSeleEdit = {"ui/iggy/CHARASELE.iggy", "no Battle Style row in the skill popup",
+                                         kCharaSeleScripts, _countof(kCharaSeleScripts)};
 // AVATAR_LIST is also the game's own list in the other EditChara modes
 // (character creation etc.); the rebuilt script behaves as the vanilla one
-// unless Battle Styles sends a count again.
-static MenuIggy g_avatarListIggy = {"ui/iggy/avatar_list.iggy", "AVATAR_LIST.iggy",
-                                   "the style list shows search matches only when it is opened again",
-                                   kAvatarListVariants, _countof(kAvatarListVariants), nullptr, 0, 0};
-static MenuIggy* const g_menuIggys[] = {&g_avatarIggy, &g_charaSeleIggy, &g_mysetIggy, &g_avatarListIggy};
+// unless Battle Styles sends a count again. Only edited with "style_search".
+static const MenuEdit g_avatarListEdit = {"ui/iggy/AVATAR_LIST.iggy",
+                                          "the style list shows search matches only when it is opened again",
+                                          kAvatarListScripts, _countof(kAvatarListScripts)};
 
-// Whether the menu's AS is ours, so it splits off a style appended to a
-// string; the vanilla one would show the tab and the name.
-static bool ServedPatched(const MenuIggy& iggy) { return InterlockedCompareExchange((volatile LONG*)&iggy.servedPatched, 0, 0) != 0; }
-
-typedef void*    (__fastcall* GetDataFn)(void* request);
-typedef uint64_t (__fastcall* GetSizeFn)(void* request);
-static GetDataFn g_origData18 = nullptr, g_origData20 = nullptr;
-static GetSizeFn g_origSize30 = nullptr, g_origSize38 = nullptr;
-
-// Patched copies, per source content and script set. Kept for the whole
-// session: the game may hold on to a buffer it was given.
-static SRWLOCK g_servedLock = SRWLOCK_INIT;
-static std::map<std::tuple<uint64_t, uint64_t, bool>, std::vector<uint8_t>*> g_served;  // (hash, size, search) -> copy or null
-
-// Whether Chara Search is loaded and has its hooks in, asked each time a
-// menu file is served: the Lua script (chara_search.lua) patches CHARASELE
-// through the loader's library under its LUA_NAME "CharaSearch"
-// (XV2Files_Owner); older versions were CharaSearch.dll (CharaSearch_Active).
-static bool CharaSearchActive()
+// Hands every script of the menu to the library; true when one was taken.
+static bool RegisterMenuEdit(XV2UI& ui, const MenuEdit& edit)
 {
-    if (HMODULE library = GetModuleHandleW(L"XV2ModLoaderLib.dll")) {
-        auto owner = (int (*)(const char*, char*, int))GetProcAddress(library, "XV2Files_Owner");
-        char name[64] = {};
-        if (owner && owner("ui/iggy/charasele.iggy", name, sizeof(name)) > 0 && strcmp(name, "CharaSearch") == 0)
-            return true;
+    int registered = 0;
+    for (size_t i = 0; i < edit.scriptCount; ++i) {
+        const MenuScript& script = edit.scripts[i];
+        char reason[256] = {};
+        if (ui.EditScript(kUiOwner, edit.path, script.abc, script.abcSize, script.base, script.baseSize, script.game,
+                          script.gameSize, 0, reason, sizeof(reason)))
+            ++registered;
+        else
+            Log("%s: the %s script was refused: %s", edit.path, script.source, reason);
     }
-    HMODULE module = GetModuleHandleW(L"CharaSearch.dll");
-    auto active = module ? (int (*)())GetProcAddress(module, "CharaSearch_Active") : nullptr;
-    return active && active() != 0;
+    if (!registered) Log("%s: NOT patched - %s", edit.path, edit.lostFeature);
+    return registered > 0;
 }
 
-// The menu file a request is for, or null. The game's requests use
-// backslashes (data\ui\iggy\AVATAR.iggy, seen in live request objects), so
-// '/' and '\' compare equal, case-insensitively.
-static MenuIggy* RequestedMenu(void* request)
+// Registers the menu edits; returns how many menus took one, `wanted` = of how many.
+static int RegisterMenuEdits(bool search, int& wanted)
 {
-    const char* path = (const char*)request + kRequestPath;
-    size_t length = strnlen(path, kRequestPathMax);
-    for (MenuIggy* iggy : g_menuIggys) {
-        if (iggy == &g_avatarListIggy && !SearchWanted()) continue;
-        size_t suffix = strlen(iggy->pathSuffix);
-        if (length < suffix + 1) continue;
-        const char* tail = path + length - suffix;
-        bool same = tail[-1] == '/' || tail[-1] == '\\';
-        for (size_t i = 0; same && i < suffix; ++i) {
-            char have = tail[i] == '\\' ? '/' : (char)tolower((unsigned char)tail[i]);
-            same = have == iggy->pathSuffix[i];
-        }
-        if (same) return iggy;
+    const MenuEdit* edits[] = {&g_avatarEdit, &g_mysetEdit, &g_charaSeleEdit, search ? &g_avatarListEdit : nullptr};
+    wanted = search ? 4 : 3;
+    XV2UI ui;
+    if (!ui.Load()) {
+        Log("menus: NOT patched - no Battle Style slot or rows: the mod loader's UI library "
+            "(XV2UserInterfaceLib.dll) is missing; update XV2 Mod Loader");
+        return 0;
     }
-    return nullptr;
+    int registered = 0;
+    for (const MenuEdit* edit : edits)
+        if (edit && RegisterMenuEdit(ui, *edit)) ++registered;
+    return registered;
 }
 
-static std::vector<uint8_t>* Lookup(void* request, void* data, uint64_t size)
+// Whether the copy of the menu the game last read had this mod's edit in it,
+// so its script splits off a style appended to a string (the vanilla one
+// would show the tab and the name) or redraws the list. The loader's status
+// for the file is "served: ..." with one patch, or "owner: outcome; owner:
+// outcome" with several.
+static bool MenuEdited(const MenuEdit& edit)
 {
-    MenuIggy* iggy = data ? RequestedMenu(request) : nullptr;
-    if (!iggy) return nullptr;
-    uint64_t hash = Fnv64((const uint8_t*)data, (size_t)size);
-    bool search = iggy->searchVariants && CharaSearchActive();
-    const AbcVariant* variants = search ? iggy->searchVariants : iggy->variants;
-    size_t variantCount = search ? iggy->searchVariantCount : iggy->variantCount;
-    AcquireSRWLockExclusive(&g_servedLock);
-    auto found = g_served.find({hash, size, search});
-    std::vector<uint8_t>* served;
-    if (found != g_served.end()) {
-        served = found->second;
-    } else {
-        // Try each script the menu has a rebuild for; the notes say why each
-        // one did not match.
-        served = nullptr;
-        std::string notes;
-        for (size_t i = 0; i < variantCount && !served; ++i) {
-            const AbcVariant& variant = variants[i];
-            auto copy = new std::vector<uint8_t>;
-            std::string note;
-            if (ReplaceIggyAbc((const uint8_t*)data, (size_t)size, variant.vanillaAbcSize, variant.vanillaAbcHash,
-                               variant.abc, variant.abcSize, *copy, note)) {
-                served = copy;
-                notes = std::string(variant.source) + ": " + note;
-            } else {
-                delete copy;
-                notes += (notes.empty() ? "" : "; ") + std::string(variant.source) + ": " + note;
-            }
-        }
-        if (served) Log("%s (%llu bytes): %s%s", iggy->fileName, (unsigned long long)size, notes.c_str(),
-                        search ? " (with Chara Search's search)" : "");
-        else Log("%s (%llu bytes): NOT patched - %s: %s", iggy->fileName, (unsigned long long)size, iggy->lostFeature, notes.c_str());
-        g_served[{hash, size, search}] = served;
-    }
-    ReleaseSRWLockExclusive(&g_servedLock);
-    InterlockedExchange(&iggy->servedPatched, served ? 1 : 0);
-    return served;
-}
-
-// Every mod in the file-request chain calls the next one's data and size;
-// fetching them for files this mod never edits multiplied the calls ~600x
-// down a six-mod chain (host hitches online), so the path is checked first.
-static void* Serve(void* request, void* data)
-{
-    if (!data || !RequestedMenu(request)) return data;
-    std::vector<uint8_t>* served = Lookup(request, data, g_origSize38(request));
-    return served ? served->data() : data;
-}
-static uint64_t ServeSize(void* request, uint64_t size)
-{
-    if (!RequestedMenu(request)) return size;
-    void* data = g_origData20(request);
-    std::vector<uint8_t>* served = Lookup(request, data, data ? g_origSize38(request) : 0);
-    return served ? served->size() : size;
-}
-// The four hooked slots, named after their byte offset in the table.
-static void*    __fastcall HkData18(void* request) { return Serve(request, g_origData18(request)); }
-static void*    __fastcall HkData20(void* request) { return Serve(request, g_origData20(request)); }
-static uint64_t __fastcall HkSize30(void* request) { return ServeSize(request, g_origSize30(request)); }
-static uint64_t __fastcall HkSize38(void* request) { return ServeSize(request, g_origSize38(request)); }
-
-static bool InstallFileHook()
-{
-    HANDLE lock = CreateMutexW(nullptr, FALSE, L"XV2Mods_FileRequestHook");
-    if (lock) WaitForSingleObject(lock, 10000);
-    uintptr_t* vtable = (uintptr_t*)(g_base + kRequestVtable);
-    g_origData18 = (GetDataFn)vtable[3];
-    g_origData20 = (GetDataFn)vtable[4];
-    g_origSize30 = (GetSizeFn)vtable[6];
-    g_origSize38 = (GetSizeFn)vtable[7];
-    DWORD oldProtect;
-    bool ok = VirtualProtect(&vtable[3], 5 * sizeof(uintptr_t), PAGE_READWRITE, &oldProtect) != FALSE;
-    if (ok) {
-        vtable[3] = (uintptr_t)&HkData18;
-        vtable[4] = (uintptr_t)&HkData20;
-        vtable[6] = (uintptr_t)&HkSize30;
-        vtable[7] = (uintptr_t)&HkSize38;
-        VirtualProtect(&vtable[3], 5 * sizeof(uintptr_t), oldProtect, &oldProtect);
-    }
-    if (lock) { ReleaseMutex(lock); CloseHandle(lock); }
-    return ok;
+    std::string status = GamePatchStatus(edit.path);
+    if (status.compare(0, 7, "served:") == 0) return GamePatchOwner(edit.path) == kUiOwner;
+    std::string ours = std::string(kUiOwner) + ": served:";
+    size_t at = status.find(ours);
+    return at != std::string::npos && (at == 0 || (at >= 2 && status.compare(at - 2, 2, "; ") == 0));
 }
 
 // ------------------------------------------------------- the equip menu ---
@@ -1162,26 +1053,26 @@ static const int kSendRequestBattleStyle = 240; // SendTypeRequestListBattleStyl
 static const int kUserDataStyleLabel = 96;     // ReceiveTypeBattleStyleStr
 static const int kUserDataStyleCount = 97;     // ReceiveTypeBattleStyleNum: > 0 = slot active
 
-// OggyBase user data (vtable 0xf98020): bounds-checked setters; the string
+// OggyBase user data (vtable 0xfa60a0): bounds-checked setters; the string
 // one keeps the POINTER, so it must stay alive (g_styles' names do).
 typedef void (__fastcall* SetUserDataIntFn)(void* menu, int index, int value);
 typedef void (__fastcall* SetUserDataStrFn)(void* menu, int index, const wchar_t* text);
-static const uintptr_t kSetUserDataInt = 0x2c81a0, kSetUserDataStr = 0x2c8240;
+static const uintptr_t kSetUserDataInt = 0x2c82a0, kSetUserDataStr = 0x2c8340;
 
-// EditChara (the Customize menu, vtable 0x10a0098).
-static const uintptr_t kEditCharaVtable = 0x10a0098;
+// EditChara (the Customize menu, vtable 0x10ae228).
+static const uintptr_t kEditCharaVtable = 0x10ae228;
 static const int kUserCallbackSlot = 17;              // +0x88: AS CallbackUserData("user", sendType, value)
-static const uintptr_t kUserCallback = 0x4f72c0;      // vanilla entry of that slot
-static const size_t kCallArgCount = 0x10, kCallArg0 = 0x28;  // argc; arg 0 as a double (0x4f72c0)
+static const uintptr_t kUserCallback = 0x4f7da0;      // vanilla entry of that slot
+static const size_t kCallArgCount = 0x10, kCallArg0 = 0x28;  // argc; arg 0 as a double (0x4f7da0)
 static const size_t kEditList = 0x6c0;        // EditList* (AVATAR_LIST)
-static const size_t kStateMachine = 0x6b8;    // 0x652680(sm, state, 0, 0) switches the menu's state
+static const size_t kStateMachine = 0x6b8;    // 0x656490(sm, state, 0, 0) switches the menu's state
 static const size_t kMenuMode = 0x1f4;        // 3 = Customize in game, 7 = the other Customize list
 static const size_t kOpenListType = 0x2f8;    // sendType of the open list
-static const int kNoListOpen = 0x192;         // +0x2f8 when none is (0x4fdbaa)
+static const int kNoListOpen = 0x192;         // +0x2f8 when none is (0x4fe68a)
 
-static const uintptr_t kSetListContents = 0x503970;  // (EditList*, ListParam*)
-static const uintptr_t kSetMenuState = 0x652680;      // (state machine, state, 0, 0)
-static const uintptr_t kListHasResult = 0x503950, kListGetResult = 0x503940;
+static const uintptr_t kSetListContents = 0x504450;  // (EditList*, ListParam*)
+static const uintptr_t kSetMenuState = 0x656490;      // (state machine, state, 0, 0)
+static const uintptr_t kListHasResult = 0x504430, kListGetResult = 0x504420;
 typedef void (__fastcall* SetListContentsFn)(void* list, const ListParam* param);
 typedef void (__fastcall* SetMenuStateFn)(void* stateMachine, int state, int, int);
 typedef bool (__fastcall* ListHasResultFn)(void* list);
@@ -1204,8 +1095,8 @@ static void ShowEquipped(void* menu)
 }
 
 // The menu state to show an open list in, by menu mode - copied from the
-// opener template 0x4fcac0 (0x4fcdb5..0x4fce04). They are the modes' main
-// edit states: the list poll's close tail (0x4fdc1b) goes back to the same
+// opener template 0x4fd5a0 (0x4fd895..0x4fd8e4). They are the modes' main
+// edit states: the list poll's close tail (0x4fe6fb) goes back to the same
 // ones, the list itself takes the input while open.
 static int ListState(int mode, int listType)
 {
@@ -1228,21 +1119,21 @@ static const char* const kSearchHint = "Search (Ctrl+F)";
 static const float kSearchX = 0.22f, kSearchY = 0.17f, kSearchWidth = 0.30f;  // fractions of the picture
 static const char* const kNoStyleMatches = "No style matches";
 
-// EditList (AVATAR_LIST) fields and calls besides 0x503970:
-// * +0x1b4 flags: 1 = exited (0x6690e0), 2 = cancelled (0x6690a0), 2|4 =
-//   decided (0x6690c0); 0x503970 clears all three, so the list is only
+// EditList (AVATAR_LIST) fields and calls besides 0x504450:
+// * +0x1b4 flags: 1 = exited (0x66cfb0), 2 = cancelled (0x66cf70), 2|4 =
+//   decided (0x66cf90); 0x504450 clears all three, so the list is only
 //   refilled while none is set.
 // * +0x210 the result: the entry of the last cursor move (the AS sends
-//   every move, handler 0x5038f0 - no bounds check, so the entries must
-//   always match the count the AS has), the default on cancel (0x5038a0);
+//   every move, handler 0x5043d0 - no bounds check, so the entries must
+//   always match the count the AS has), the default on cancel (0x504380);
 //   -1 again after the list poll (g_shownCursor keeps the cursor).
 // * user data 18 (ReceiveType_ListDefault): the X button's entry, sent by
-//   0x503a50 (also kept at +0x214) from the game's list opener; the rebuilt
+//   0x504530 (also kept at +0x214) from the game's list opener; the rebuilt
 //   AvatarList.as reads it as the cursor after a refresh, then puts the X
 //   entry back.
 static const size_t kListFlags = 0x1b4, kListResult = 0x210;
 static const uint32_t kListEnded = 1 | 2 | 4;
-static const uintptr_t kSetListXEntry = 0x503a50;  // (EditList*, index)
+static const uintptr_t kSetListXEntry = 0x504530;  // (EditList*, index)
 static const int kListUserDataCursor = 18;
 typedef void (__fastcall* SetListXEntryFn)(void* list, int index);
 
@@ -1418,19 +1309,19 @@ static bool ToggleCursorFavorite()
 // ------------------------------------------------- character unlocks ---
 // "styles": "roster" shows a style only while one of its character select
 // costumes is unlocked. The character select asks check_unlock(menu, CMS id,
-// costume) (0x5e2560, nonzero = unlocked) at 0x5e4ae2: mov r8d, [rdi+0x43c];
+// costume) (0x5e3090, nonzero = unlocked) at 0x5e5612: mov r8d, [rdi+0x43c];
 // mov rcx, rdi; mov edx, [rdi+0x438]; call. XV2Patcher's unlock_chara_mods
 // hooks that call (UnlockCharaMods, for added characters) and
 // unlock_chara_all writes "mov r8d, 1" over it, so the call there is
-// followed instead of calling 0x5e2560 directly. 0x5e2560 reads only three
+// followed instead of calling 0x5e3090 directly. 0x5e3090 reads only three
 // fields of the menu (+0x27e8 / +0x27e4 nonzero = skip the checks, +0x444 a
-// CaC entry's path; its sub-checks 0x5e4140 raid ACCFLAGs, 0x5e3cc0 DLC,
-// 0x5e3f70 quest unlocks get the menu but don't read it); the rest is the
-// save (0x15545b0), CMS and DLC tables. So a zeroed stand-in menu asks the
+// CaC entry's path; its sub-checks 0x5e4c70 raid ACCFLAGs, 0x5e47f0 DLC,
+// 0x5e4aa0 quest unlocks get the menu but don't read it); the rest is the
+// save (0x1568310), CMS and DLC tables. So a zeroed stand-in menu asks the
 // same question outside the character select. Found by reverse engineering
-// 1.26.01 (battle-styles.md "Unlocked styles"). Uses the local save: only
+// 1.27 (battle-styles.md "Unlocked styles"). Uses the local save: only
 // the list is filtered; the equipped style still goes online by code.
-static const uintptr_t kCheckUnlockSite = 0x5e4ae2, kCheckUnlock = 0x5e2560;
+static const uintptr_t kCheckUnlockSite = 0x5e5612, kCheckUnlock = 0x5e3090;
 static const uint8_t kCheckUnlockSetup[] = {0x44, 0x8B, 0x87, 0x3C, 0x04, 0x00, 0x00,   // mov r8d, [rdi+0x43c]
                                             0x48, 0x8B, 0xCF,                           // mov rcx, rdi
                                             0x8B, 0x97, 0x38, 0x04, 0x00, 0x00};        // mov edx, [rdi+0x438]
@@ -1467,7 +1358,7 @@ static CheckUnlockFn FindCheckUnlock()
     const uint8_t* call = site + sizeof kCheckUnlockSetup;
     if (memcmp(site, kCheckUnlockSetup, sizeof kCheckUnlockSetup) != 0) { Log("styles: unlock check not found - not applied"); return nullptr; }
     if (memcmp(call, kUnlockAllWrite, sizeof kUnlockAllWrite) == 0) return nullptr;  // XV2Patcher unlock_chara_all
-    CheckUnlockFn check = (CheckUnlockFn)CallTarget(call);  // 0x5e2560, or XV2Patcher's hook
+    CheckUnlockFn check = (CheckUnlockFn)CallTarget(call);  // 0x5e3090, or XV2Patcher's hook
     if (!check) Log("styles: unlock check call changed - not applied");
     return check;
 }
@@ -1479,25 +1370,25 @@ static CheckUnlockFn FindCheckUnlock()
 // costume when
 //   (owned1 & DlcFlag1) == 0 && (owned2 & DlcFlag2) == 0 (&& two single-
 //   character unlock keys miss - not read here: the x2s files have none).
-// The game builds both masks in 0x5e5fb0 before sending them to the script:
-// * owned1 = 0x5e3a60(menu) (call at 0x5e6105, iggy var 0x224a): pack
-//   ownership 0x2b9c30(pack, 0) and update level 0x2b9850() bits, plus the
+// The game builds both masks in 0x5e6ae0 before sending them to the script:
+// * owned1 = 0x5e4590(menu) (call at 0x5e6c35, iggy var 0x224a): pack
+//   ownership 0x2b9d50(pack, 0) and update level 0x2b9970() bits, plus the
 //   raid bosses' bit 0x1c only in a raid quest (type 0xf) or with menu
 //   +0x27e4 set. Called through the live call target.
-// * owned2 is built inline, 0x5e611a..0x5e623e (more 0x2b9c30 / 0x2b9850
+// * owned2 is built inline, 0x5e6c4a..0x5e6d7c (more 0x2b9d50 / 0x2b9970
 //   bits in edi; then var 0x224b). That block is run where it is: a stub
 //   enters it with the registers it reads (esi = 0, r14d = 1, set at
-//   0x5e5fd6 / 0x5e6069) and a hook at its end (0x5e623e, mov r8d, edi; mov
+//   0x5e6b06 / 0x5e6b99) and a hook at its end (0x5e6d7c, mov r8d, edi; mov
 //   edx, 0x224b) hands edi back instead of going on to the script.
 // So whatever the game runs there (XV2Patcher's ownership hook, any mod's
 // patch) is what the list follows. The raid bit is always added: raids are
 // a game mode, not a purchase, and "roster" checks the raid bosses'
-// ACCFLAGs anyway. Found by reverse engineering 1.26.01 (battle-styles.md
+// ACCFLAGs anyway. Found by reverse engineering 1.27 (battle-styles.md
 // "DLC characters"). Like the unlock check this only filters the local list.
-static const uintptr_t kOwnedMask1Site = 0x5e6102;  // mov rcx, rbx; call 0x5e3a60
+static const uintptr_t kOwnedMask1Site = 0x5e6c32;  // mov rcx, rbx; call 0x5e4590
 static const uint8_t kOwnedMask1Setup[] = {0x48, 0x8B, 0xCB};
-static const uintptr_t kOwnedMask2Start = 0x5e611a; // first instruction of the owned2 block
-static const uintptr_t kOwnedMask2End = 0x5e623e;   // mov r8d, edi; mov edx, 0x224b
+static const uintptr_t kOwnedMask2Start = 0x5e6c4a; // first instruction of the owned2 block
+static const uintptr_t kOwnedMask2End = 0x5e6d7c;   // mov r8d, edi; mov edx, 0x224b
 static const uint8_t kOwnedMask2EndCode[] = {0x44, 0x8B, 0xC7, 0xBA, 0x4B, 0x22, 0x00, 0x00};
 static const uint32_t kRaidBit = 0x10000000;        // eternity's "PRB" DLC key
 typedef uint32_t (__fastcall* OwnedMaskFn)(void* menu);
@@ -1508,7 +1399,7 @@ struct OwnedDlc { uint32_t mask1 = 0, mask2 = 0; };
 // The stub and the end hook share this page: code, then the fields below.
 struct Owned2Stub {
     uint64_t savedRsp = 0;     // the stub's stack pointer, restored by the end hook
-    uint64_t trampoline = 0;   // the end's replayed instructions -> back to 0x5e6246
+    uint64_t trampoline = 0;   // the end's replayed instructions -> back to 0x5e6d84
     uint8_t  running = 0;      // set while the stub runs the block
 };
 static Owned2Stub* g_owned2Data = nullptr;
@@ -1672,7 +1563,7 @@ static void FilterStyles(int equipped)
     }
     g_noStyleMatches = !anyMatch;
     const std::set<std::string>* favorites = AccountFavorites(g_styleFavorites);
-    bool stars = ServedPatched(g_avatarListIggy);
+    bool stars = MenuEdited(g_avatarListEdit);
     g_shownEntries.clear();
     g_shownStyles.clear();
     for (int pass = 0; pass < 2; ++pass) {  // 0: Default and the favorites, 1: the rest
@@ -1721,7 +1612,7 @@ static void RefreshStyleList(void* list)
     g_shownCursor = cursor;
 }
 
-// Same steps as the game's own list openers (template 0x4fcac0): contents
+// Same steps as the game's own list openers (template 0x4fd5a0): contents
 // with the equipped entry as default, remember which list is open, switch
 // the menu to its list state.
 static void OpenStyleList(void* menu)
@@ -1751,21 +1642,21 @@ static void __fastcall HkUserCallback(void* menu, const uint8_t* call)
     g_origUserCallback(menu, call);
 }
 
-// The preset menu, EditMyset (CMN_PRESET_PLT.iggy, vtable 0x10a1098; made
-// by 0x5057a0). Its AS callback (slot 17, 0x505da0) passes arg 0 (sendType)
-// and arg 1 (+0x48, a double) to 0x506710, which for
-//   sendType 2 (load preset n):  0x5064a0(menu, n, 0) - record n over the main
-//   sendType 3 (save preset n):  0x5064a0(menu, 0, n) - the main over record n
-// 0x5064a0(menu, from, to) copies the loaded character's 0x68-byte loadout
+// The preset menu, EditMyset (CMN_PRESET_PLT.iggy, vtable 0x10af228; made
+// by 0x506280). Its AS callback (slot 17, 0x506880) passes arg 0 (sendType)
+// and arg 1 (+0x48, a double) to 0x5071f0, which for
+//   sendType 2 (load preset n):  0x506f80(menu, n, 0) - record n over the main
+//   sendType 3 (save preset n):  0x506f80(menu, 0, n) - the main over record n
+// 0x506f80(menu, from, to) copies the loaded character's 0x68-byte loadout
 // record (character + 0xf4 + i * 0x68) when both are >= 0; it is the only
 // code that copies those records (ClaudeTools\battle_styles\presetrefs.py), and
 // these two calls its only callers.
-static const uintptr_t kEditMysetVtable = 0x10a1098;
-static const uintptr_t kMysetCallback = 0x505da0;   // vanilla entry of slot 17
-static const size_t kCallArg1 = 0x48;               // arg 1 as a double (0x505da6)
+static const uintptr_t kEditMysetVtable = 0x10af228;
+static const uintptr_t kMysetCallback = 0x506880;   // vanilla entry of slot 17
+static const size_t kCallArg1 = 0x48;               // arg 1 as a double (0x506886)
 //   sendType 0 (RequestEquipData, preset n): user data 2..8 = the record's
 //     equipment names, 9..16 its skill names (16 = evasive skill, the last
-//     row, AvatarMyset.as ReceiveType_SkillStrEnd), then 0x64fa20 builds it.
+//     row, AvatarMyset.as ReceiveType_SkillStrEnd), then 0x653830 builds it.
 static const int kMysetSendEquipData = 0, kMysetSendLoad = 2, kMysetSendSave = 3;
 static const int kMysetUserDataLastSkill = 16;
 static UserCallbackFn g_origMysetCallback = nullptr;
@@ -1777,7 +1668,7 @@ static const int kSendLayoutDump = 9901;
 static const size_t kLayoutDumpMax = 256 * 1024;
 
 // The OggyBase user-data vector (+0x160 begin, +0x168 end): 16-byte
-// entries {int set, int type, value}; SetUserDataStr (0x2c8240) stores
+// entries {int set, int type, value}; SetUserDataStr (0x2c8340) stores
 // type 6 and the wchar_t pointer.
 static const size_t kUserDataBegin = 0x160, kUserDataEnd = 0x168, kUserDataEntrySize = 16;
 static const size_t kUserDataType = 4, kUserDataValue = 8;
@@ -1851,19 +1742,19 @@ static void __fastcall HkMysetCallback(void* menu, const uint8_t* call)
     int sendType = (int)*(const double*)(call + kCallArg0), preset = (int)*(const double*)(call + kCallArg1);
     if (sendType == kMysetSendLoad) CopyPreset(preset, kMainPreset);
     else if (sendType == kMysetSendSave) CopyPreset(kMainPreset, preset);
-    else if (sendType == kMysetSendEquipData && ServedPatched(g_mysetIggy) && preset >= 0 && preset < kPresets)
+    else if (sendType == kMysetSendEquipData && MenuEdited(g_mysetEdit) && preset >= 0 && preset < kPresets)
         AppendStyle(menu, kMysetUserDataLastSkill, StyleMenu_PresetCode(-1, preset));
 }
 
-// The character select (SelectCharacter, CHARASELE.iggy, vtable 0x10be328).
-// Its AS callback (slot 17, 0x5e1630) only gets the layout dump from us;
+// The character select (SelectCharacter, CHARASELE.iggy, vtable 0x10cc558).
+// Its AS callback (slot 17, 0x5e2160) only gets the layout dump from us;
 // Chara Search hooks the same slot for its messages (9902/9904), and
 // each mod passes on what isn't its own.
-// 0x5e57a0(menu) (only caller 0x5e4988) fills the skill popup's user data
+// 0x5e62d0(menu) (only caller 0x5e54b8) fills the skill popup's user data
 // for the character under the cursor, ending with the Super Soul name in
 // slot 17 (CharaSele.as ReceiveType_TarismanNameStr); the style goes after it.
-static const uintptr_t kSelectCharaVtable = 0x10be328;
-static const uintptr_t kSelectCharaCallback = 0x5e1630;
+static const uintptr_t kSelectCharaVtable = 0x10cc558;
+static const uintptr_t kSelectCharaCallback = 0x5e2160;
 static UserCallbackFn g_origSelectCharaCallback = nullptr;
 
 static void __fastcall HkSelectCharaCallback(void* menu, const uint8_t* call)
@@ -1872,15 +1763,15 @@ static void __fastcall HkSelectCharaCallback(void* menu, const uint8_t* call)
     g_origSelectCharaCallback(menu, call);
 }
 
-static const uintptr_t kCharaSeleInfo = 0x5e57a0;
+static const uintptr_t kCharaSeleInfo = 0x5e62d0;
 // mov rax, rsp; push rbp; push r12 (6 bytes, taken by the hook); push r13..r15;
 // lea rbp, [rax-0x358]
 static const uint8_t kCharaSeleInfoCode[] = {0x48, 0x8B, 0xC4, 0x55, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56,
                                              0x41, 0x57, 0x48, 0x8D, 0xA8, 0xA8, 0xFC, 0xFF, 0xFF};
-static const size_t kCharaSeleCharaId = 0x438;   // CMS id under the cursor (< 0: none, 0x5e57e3)
-static const size_t kCharaSelePreset = 0x440;    // preset picked for it (0x5e66d0 hook in mod.cpp)
+static const size_t kCharaSeleCharaId = 0x438;   // CMS id under the cursor (< 0: none, 0x5e6313)
+static const size_t kCharaSelePreset = 0x440;    // preset picked for it (0x5e7210 hook in mod.cpp)
 static const size_t kCharaSeleSaveSlot = 0x450;  // a CaC's save slot (battle-styles-loading-and-online.md)
-static const int kFirstCacId = 100, kLastCacId = 109;  // add ecx,-0x64; cmp ecx,9 (0x290000)
+static const int kFirstCacId = 100, kLastCacId = 109;  // add ecx,-0x64; cmp ecx,9 (0x2900c0)
 static const int kTarismanNameUserData = 17;
 typedef uint64_t (__fastcall* CharaSeleInfoFn)(void* menu);
 static CharaSeleInfoFn g_origCharaSeleInfo = nullptr;
@@ -1890,7 +1781,7 @@ static uint64_t __fastcall HkCharaSeleInfo(void* menu)
     uint64_t result = g_origCharaSeleInfo(menu);
     int charaId = Field<int>(menu, kCharaSeleCharaId), slot = Field<int>(menu, kCharaSeleSaveSlot);
     int preset = Field<int>(menu, kCharaSelePreset);
-    if (charaId >= kFirstCacId && charaId <= kLastCacId && slot >= 0 && slot < kCharacterSlots && ServedPatched(g_charaSeleIggy))
+    if (charaId >= kFirstCacId && charaId <= kLastCacId && slot >= 0 && slot < kCharacterSlots && MenuEdited(g_charaSeleEdit))
         AppendStyle(menu, kTarismanNameUserData, StyleMenu_PresetCode(slot, preset >= 0 && preset < kPresets ? preset : kMainPreset));
     return result;
 }
@@ -1904,36 +1795,49 @@ static UserCallbackFn HookVtableSlot(uintptr_t vtableRva, int index, UserCallbac
     vanilla = *slot == g_base + vanillaRva;
     DWORD old;
     if (!VirtualProtect(slot, sizeof(*slot), PAGE_READWRITE, &old)) return nullptr;
-    UserCallbackFn original = (UserCallbackFn)*slot;
-    *slot = (uintptr_t)hook;
+    // compare-exchange: Multi Accessory chains EditChara's and EditMyset's
+    // slot from its own thread
+    UserCallbackFn original;
+    void* previous;
+    do {
+        previous = (void*)*slot;
+        original = (UserCallbackFn)previous;
+    } while (InterlockedCompareExchangePointer((void**)slot, (void*)hook, previous) != previous);
     VirtualProtect(slot, sizeof(*slot), old, &old);
     return original;
 }
 
-// EditChara's cloth push 0x4fb3f0(menu, customize): refreshes the cloth and
-// Super Soul slots (206..212). Called when the menu starts (0x4f7bb0) and
-// for the tab requests 103/107 - hooking only 103/107 left the slot grey
-// until the tab was shown a second time (seen in game).
-static const uintptr_t kClothPush = 0x4fb3f0;
+// EditChara's skill push 0x4fc850(menu, customize): refreshes the skill
+// slots (0xd5..0xdc). Called when the Skills page (mode 4) starts (0x4f8690,
+// twice) and for the skill tab request 108 (0x4fb3e1) - the same shape as
+// the cloth push 0x4fbed0, where hooking only the tab request left the slot
+// grey until the tab was shown a second time (seen in game).
+static const uintptr_t kSkillPush = 0x4fc850;
 // mov [rsp+8], rbx (5 bytes, taken by the hook); mov [rsp+0x10], rsi; push rdi
-static const uint8_t kClothPushCode[] = {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57};
-typedef void (__fastcall* ClothPushFn)(void* menu, int customize);
-static ClothPushFn g_origClothPush = nullptr;
+static const uint8_t kSkillPushCode[] = {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74, 0x24, 0x10, 0x57};
+typedef void (__fastcall* SkillPushFn)(void* menu, int customize);
+static SkillPushFn g_origSkillPush = nullptr;
 
-static void __fastcall HkClothPush(void* menu, int customize)
+static void __fastcall HkSkillPush(void* menu, int customize)
 {
-    g_origClothPush(menu, customize);
+    g_origSkillPush(menu, customize);
+    // The Skills page also re-pushes while the skill item list (+0x6d0) is
+    // closed (0x4f88d3) - that includes while our style list is open. The
+    // AS list wait (waitEditMenuList) ends as soon as slot 96 is re-sent, so
+    // sending the label then hands input back to the skill menu behind the
+    // list. HkListPoll sends it once the list closes.
+    if (Field<int>(menu, kOpenListType) == kSendRequestBattleStyle) return;
     ShowEquipped(menu);
 }
 
 // EditChara's list poll, every frame while a list is open: when the list
-// closes it resets +0x2f8 to 0x192 (tail 0x4fdbaa; an unknown type like
+// closes it resets +0x2f8 to 0x192 (tail 0x4fe68a; an unknown type like
 // 240 is otherwise ignored). The entry under the cursor is the list's
 // result (sent on every move; a cancel sends the default back), read here
 // before the game's poll empties it.
-static const uintptr_t kListPoll = 0x4fd9d0;
+static const uintptr_t kListPoll = 0x4fe4b0;
 // push rbx (40 53); sub rsp, 0x20; mov rbx, rcx; mov rcx, [rcx+0x6c0] - the
-// hook takes the first 6 bytes (0x4fd9d0 is 16-byte aligned).
+// hook takes the first 6 bytes (0x4fe4b0 is 16-byte aligned).
 static const uint8_t kListPollCode[] = {0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0xD9, 0x48, 0x8B, 0x89, 0xC0};
 typedef uint64_t (__fastcall* ListPollFn)(void* menu);
 static ListPollFn g_origListPoll = nullptr;
@@ -1963,13 +1867,13 @@ static uint64_t __fastcall HkListPoll(void* menu)
         // next time the list opens: a count the script never reads must not
         // change under it.
         unsigned changes = g_search.Show(kSearchId, kSearchHint, kSearchX, kSearchY, kSearchWidth);
-        bool canRefresh = ServedPatched(g_avatarListIggy) && !(Field<uint32_t>(list, kListFlags) & kListEnded);
+        bool canRefresh = MenuEdited(g_avatarListEdit) && !(Field<uint32_t>(list, kListFlags) & kListEnded);
         // read every poll so a press held from before (or while typing) never toggles later
         bool favoritePressed = FavoritePressed();
         bool typing = g_search.Typing(kSearchId) != 0;
         if (favoritePressed && (!canRefresh || typing))  // once per press: why it did nothing
             Log("favorite: press ignored (%s)", typing ? "typing in the box"
-                : !ServedPatched(g_avatarListIggy) ? "vanilla AVATAR_LIST script" : "list closing");
+                : !MenuEdited(g_avatarListEdit) ? "vanilla AVATAR_LIST script" : "list closing");
         if (favoritePressed && canRefresh && !typing && ToggleCursorFavorite())
             RefreshStyleList(list);
         else if (changes != g_shownChanges && canRefresh)
@@ -1980,19 +1884,39 @@ static uint64_t __fastcall HkListPoll(void* menu)
     return result;
 }
 
-// The ctor of EditChara (0x4f67a0) passes its user-data slot count as
-// 2 + 0x5e (mov edx, 2; lea r8d, [rdx+0x5e] at 0x4f67cf). 0x60 gives the
-// 98 slots Avatar.as now uses.
-static const uintptr_t kSlotCountCode = 0x4f67cf, kSlotCountByte = 0x4f67d7;
-static const uint8_t kSlotCountVanilla[] = {0xBA, 0x02, 0x00, 0x00, 0x00, 0x44, 0x8D, 0x42, 0x5E};
-static const uint8_t kSlotCountPatched = 0x60;
+// The ctor of EditChara (0x4f7280) passes its user-data slot count as
+// 2 + 0x5e (mov edx, 2; lea r8d, [rdx+0x5e] at 0x4f72af). 0x60 gives the
+// 98 slots Avatar.as now uses. Other mods edit AVATAR too and raise the
+// same byte (Multi Accessory: 0x64), so it is only ever raised, never set.
+static const uintptr_t kSlotCountCode = 0x4f72af, kSlotCountByte = 0x4f72b7;
+static const uint8_t kSlotCountCodeBytes[] = {0xBA, 0x02, 0x00, 0x00, 0x00, 0x44, 0x8D, 0x42}; // then the count
+static const uint8_t kSlotCountVanilla = 0x5E, kSlotCountPatched = 0x60;
 
-// The same ctor makes the AVATAR_LIST (+0x6c0, EditList ctor 0x503700) only
+// Raises the slot count to kSlotCountPatched unless it is already higher
+// (compare-exchange against another mod raising it at the same time).
+static bool RaiseSlotCount()
+{
+    volatile char* count = (volatile char*)(g_base + kSlotCountByte);
+    if ((uint8_t)*count < kSlotCountVanilla || (uint8_t)*count > 0x7f) return false;
+    DWORD old;
+    if (!VirtualProtect((void*)count, 1, PAGE_EXECUTE_READWRITE, &old)) return false;
+    char seen = *count;
+    while ((uint8_t)seen < kSlotCountPatched) {
+        char before = _InterlockedCompareExchange8(count, (char)kSlotCountPatched, seen);
+        if (before == seen) break;
+        seen = before;
+    }
+    VirtualProtect((void*)count, 1, old, &old);
+    FlushInstructionCache(GetCurrentProcess(), (void*)count, 1);
+    return true;
+}
+
+// The same ctor makes the AVATAR_LIST (+0x6c0, EditList ctor 0x5041e0) only
 // in modes 1, 2, 5, 6 and 8: lea eax, [rcx-1]; test eax, ~5; je create;
-// cmp ecx, 8; jne skip (0x4f6ab6). The Customize menu (mode 3) has none, so
+// cmp ecx, 8; jne skip (0x4f7596). The Customize menu (mode 3) has none, so
 // the jne becomes two nops: every mode gets the list, which stays hidden
-// until the style list opens. The dtor (0x4f6f10) frees it when present.
-static const uintptr_t kListCtorCheck = 0x4f6ab6, kListCtorSkip = 0x4f6ac3;
+// until the style list opens. The dtor (0x4f79f0) frees it when present.
+static const uintptr_t kListCtorCheck = 0x4f7596, kListCtorSkip = 0x4f75a3;
 static const uint8_t kListCtorCheckCode[] = {0x8D, 0x41, 0xFF, 0xA9, 0xFA, 0xFF, 0xFF, 0xFF, 0x74, 0x05, 0x83, 0xF9, 0x08, 0x75, 0x39};
 static const uint8_t kListCtorAlways[] = {0x90, 0x90};
 
@@ -2008,9 +1932,11 @@ static bool PatchCode(uintptr_t rva, const uint8_t* bytes, size_t size)
     return true;
 }
 
-void StyleMenu_InstallDataHooks()
+void StyleMenu_InstallDataHooks(bool search)
 {
-    bool fileHook = InstallFileHook();
+    InterlockedExchange(&g_searchWanted, search ? 1 : 0);
+    int menusWanted = 0;
+    int menus = RegisterMenuEdits(search, menusWanted);
     bool vanilla = false, mysetVanilla = false;
     g_origUserCallback = HookVtableSlot(kEditCharaVtable, kUserCallbackSlot, &HkUserCallback, kUserCallback, vanilla);
     g_origMysetCallback = HookVtableSlot(kEditMysetVtable, kUserCallbackSlot, &HkMysetCallback, kMysetCallback, mysetVanilla);
@@ -2021,8 +1947,8 @@ void StyleMenu_InstallDataHooks()
     g_origSelectCharaCallback = HookVtableSlot(kSelectCharaVtable, kUserCallbackSlot, &HkSelectCharaCallback,
                                                kSelectCharaCallback, selectVanilla);
     if (selectLock) { ReleaseMutex(selectLock); CloseHandle(selectLock); }
-    Log("menu: file hook %s, AS callback %s%s, preset menu %s%s, character select %s%s", fileHook ? "installed" : "NOT installed",
-        g_origUserCallback ? "hooked" : "NOT hooked", vanilla ? "" : " (slot was already changed by another mod)",
+    Log("menu: %d of %d menu edits registered with the UI library, AS callback %s%s, preset menu %s%s, character select %s%s",
+        menus, menusWanted, g_origUserCallback ? "hooked" : "NOT hooked", vanilla ? "" : " (slot was already changed by another mod)",
         g_origMysetCallback ? "hooked" : "NOT hooked - presets keep no style",
         mysetVanilla ? "" : " (slot was already changed by another mod)",
         g_origSelectCharaCallback ? "hooked" : "NOT hooked", selectVanilla ? "" : " (slot was already changed by another mod)");
@@ -2030,18 +1956,17 @@ void StyleMenu_InstallDataHooks()
 
 void StyleMenu_InstallCodeHooks()
 {
-    bool slotsOk = WaitForCode(kSlotCountCode, kSlotCountVanilla, sizeof(kSlotCountVanilla))
-                   && PatchCode(kSlotCountByte, &kSlotCountPatched, 1);
+    bool slotsOk = WaitForCode(kSlotCountCode, kSlotCountCodeBytes, sizeof(kSlotCountCodeBytes)) && RaiseSlotCount();
     bool listOk = WaitForCode(kListCtorCheck, kListCtorCheckCode, sizeof(kListCtorCheckCode))
                   && PatchCode(kListCtorSkip, kListCtorAlways, sizeof(kListCtorAlways));
     // Hooks are tried once: a hook must never go in twice.
     if (WaitForCode(kListPoll, kListPollCode, sizeof(kListPollCode)))
         g_origListPoll = (ListPollFn)HookCode((uint8_t*)(g_base + kListPoll), 6, (void*)&HkListPoll);
-    if (WaitForCode(kClothPush, kClothPushCode, sizeof(kClothPushCode)))
-        g_origClothPush = (ClothPushFn)HookCode((uint8_t*)(g_base + kClothPush), 5, (void*)&HkClothPush);
+    if (WaitForCode(kSkillPush, kSkillPushCode, sizeof(kSkillPushCode)))
+        g_origSkillPush = (SkillPushFn)HookCode((uint8_t*)(g_base + kSkillPush), 5, (void*)&HkSkillPush);
     if (WaitForCode(kCharaSeleInfo, kCharaSeleInfoCode, sizeof(kCharaSeleInfoCode)))
         g_origCharaSeleInfo = (CharaSeleInfoFn)HookCode((uint8_t*)(g_base + kCharaSeleInfo), 6, (void*)&HkCharaSeleInfo);
-    Log("menu: user-data slots %s, list in every mode %s, list poll %s, cloth push %s, skill popup %s (%.0f ms)",
+    Log("menu: user-data slots %s, list in every mode %s, list poll %s, skill push %s, skill popup %s (%.0f ms)",
         slotsOk ? "98" : "NOT patched", listOk ? "yes" : "NOT patched", g_origListPoll ? "hooked" : "NOT hooked",
-        g_origClothPush ? "hooked" : "NOT hooked", g_origCharaSeleInfo ? "hooked" : "NOT hooked", MsSinceStart());
+        g_origSkillPush ? "hooked" : "NOT hooked", g_origCharaSeleInfo ? "hooked" : "NOT hooked", MsSinceStart());
 }

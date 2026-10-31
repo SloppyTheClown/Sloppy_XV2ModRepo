@@ -29,6 +29,12 @@ bool ReadGameFileEnds(const std::string& path, size_t headSize,
                       const std::function<uint64_t(const std::vector<uint8_t>& head, uint64_t fileSize)>& tailFrom,
                       std::vector<uint8_t>& head, std::vector<uint8_t>& tail);
 
+// What the loader's file patches did the last time the game read `path`
+// (XV2Files::Status: "served: ...", or "owner: outcome; ..." with several
+// mods) and the first patch's owner (XV2Files::Owner); "" when none.
+std::string GamePatchStatus(const std::string& path);
+std::string GamePatchOwner(const std::string& path);
+
 // Offline tests (outside the game): loads the loader's library from
 // `libraryPath` and reads the game at `gameDir`. Call before anything else.
 bool UseGameFilesLibrary(const std::wstring& libraryPath, const std::wstring& gameDir);

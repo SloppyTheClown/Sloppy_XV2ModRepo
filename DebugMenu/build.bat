@@ -5,7 +5,7 @@ rem first opened, so nothing else is needed.
 rem
 rem   build.bat install    copy it into XV2 Mod Loader's mods\DebugMenu folder
 rem   build.bat uninstall  remove that folder
-rem   build.bat release    write ..\..\_Releases\DebugMenu-<VERSION>.zip (extract into the game folder)
+rem   build.bat release    write ..\..\_Releases\DebugMenu-<VERSION>-XV2_<GAME_VERSION>.zip (extract into the game folder)
 rem
 rem Scripts can be (re)installed while the game runs: F1 in game reloads them.
 rem The game folder is %XV2_GAME% if set, otherwise Steam's own library.
@@ -46,7 +46,8 @@ rem script and the README.
 set "STAGE=%SRC%build\package"
 rem The VERSION file names the zip and ships in the mod folder (CHANGELOG.md).
 set /p VERSION=<"%SRC%VERSION"
-set "ZIP=%SRC%..\..\_Releases\DebugMenu-%VERSION%.zip"
+set /p GAME_VERSION=<"%SRC%..\GAME_VERSION"
+set "ZIP=%SRC%..\..\_Releases\DebugMenu-%VERSION%-XV2_%GAME_VERSION%.zip"
 if exist "%STAGE%" rmdir /s /q "%STAGE%"
 mkdir "%STAGE%\XV2ModLoader\mods\DebugMenu" || exit /b 1
 copy /y "%SRC%debug_menu.lua" "%STAGE%\XV2ModLoader\mods\DebugMenu\" >nul || exit /b 1

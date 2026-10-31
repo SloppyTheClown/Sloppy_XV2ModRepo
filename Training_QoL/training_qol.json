@@ -1,0 +1,8 @@
+{
+    "toggle_button": "dpad_up",
+    "toggle_key": "",
+    "photo_button": "dpad_down",
+    "photo_key": "",
+    "photo_hide_hud": true,
+    "logging": false
+}

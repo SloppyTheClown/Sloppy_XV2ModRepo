@@ -11,14 +11,14 @@
 -- Found with ClaudeTools\lobbybodyprobe.py and ClaudeTools\battlebodyprobe.py
 -- (Research_Notes\lobby-physics-and-debug-menu.md).
 
--- Game globals and offsets (DBXV2.exe 1.26.01):
-local LOBBY_PLAYER = 0x15712f8           -- CLobbyPlayer*, set after its ctor at 0x2f9715
-local LOBBY_CAMERA_MANAGER = 0x15712e8   -- Lobby::CameraManager*, +0x20 = scene camera source
-local BATTLE_CAMERA_MANAGER = 0x156b408  -- Battle::CameraManager*, +8 = director, [director] = EmCamera
+-- Game globals and offsets (DBXV2.exe 1.27):
+local LOBBY_PLAYER = 0x15851d8           -- CLobbyPlayer*, set after its ctor at 0x2f9985
+local LOBBY_CAMERA_MANAGER = 0x15851c8   -- Lobby::CameraManager*, +0x20 = scene camera source
+local BATTLE_CAMERA_MANAGER = 0x157f168  -- Battle::CameraManager*, +8 = director, [director] = EmCamera
 local CAMERA_POSITION = 0x90             -- XG::Eva::EmCamera +0x90 position, +0xa0 interest
 local CAMERA_INTEREST = 0xa0
 local PLAYER_PHYSICS = 0x5b0             -- CLobbyPlayer +0x5b0 = PhysChar@Lobby (RTTI)
-local PHYSICS_WORLD = 0x8                -- PhysChar +8 = hknpWorld (passed to enableBodyFlags 0xc90ac0)
+local PHYSICS_WORLD = 0x8                -- PhysChar +8 = hknpWorld (passed to enableBodyFlags 0xc9e830)
 local PHYSICS_BODY = 0x80                -- PhysChar@Lobby +0x80 = body handle, +0x10 = hknpBodyId (low 24 bits)
 -- Battle: the camera director follows the local player's Mob (director +0x90;
 -- the three directors at manager +8/+0x18/+0x20 all held it, and every
@@ -26,21 +26,21 @@ local PHYSICS_BODY = 0x80                -- PhysChar@Lobby +0x80 = body handle, 
 -- battlebodyprobe.py in Training). Mob +0x4e0 = PhysVarChar@Battle, laid
 -- out like the lobby PhysChar but with the body handle at +0x78.
 local DIRECTOR_TARGET_MOB = 0x90
-local MOB_VTABLE = 0xf5e020              -- Mob@Battle (RTTI), checked so a stale pointer is never written through
+local MOB_VTABLE = 0xf6c078              -- Mob@Battle (RTTI), checked so a stale pointer is never written through
 local MOB_PHYSICS = 0x4e0
-local BATTLE_PHYSICS_VTABLE = 0xf65588   -- PhysVarChar@Battle (RTTI)
+local BATTLE_PHYSICS_VTABLE = 0xf735e8   -- PhysVarChar@Battle (RTTI)
 local BATTLE_PHYSICS_BODY = 0x78
-local WORLD_BODIES = 0x20                -- hknpWorld +0x20 = body array (0xc90820)
-local BODY_SIZE = 0xb0                   -- bytes per hknpBody (imul 0xb0 in 0xc90820)
-local BODY_FILTER_INFO = 0x6c            -- hknpBody +0x6c = collisionFilterInfo (setBodyCollisionFilterInfo 0xc90820)
+local WORLD_BODIES = 0x20                -- hknpWorld +0x20 = body array (0xc9e590)
+local BODY_SIZE = 0xb0                   -- bytes per hknpBody (imul 0xb0 in 0xc9e590)
+local BODY_FILTER_INFO = 0x6c            -- hknpBody +0x6c = collisionFilterInfo (setBodyCollisionFilterInfo 0xc9e590)
 local WORLD_FILTER = 0x468               -- hknpWorld +0x468 = collision filter (live scan)
-local FILTER_VTABLE = 0xfbf3f8           -- hknpCustomGroupCollisionFilter<6,5,5,16> vtable (RTTI)
-local FILTER_TABLE = 0x28                -- filter +0x28: 64 masks, bit B of mask A = layer A hits layer B (0x13dd50)
+local FILTER_VTABLE = 0xfcd4e8           -- hknpCustomGroupCollisionFilter<6,5,5,16> vtable (RTTI)
+local FILTER_TABLE = 0x28                -- filter +0x28: 64 masks, bit B of mask A = layer A hits layer B (0x13de10)
 local LAYER_COUNT = 64                   -- 6-bit layers (Config<6,5,5,16>)
 -- Havok only checks the filter when a body pair is created, so a new filter
 -- value needs the body's collision caches rebuilt, or pairs that already exist
 -- (the whole lobby level is one of them) keep colliding. These are the fields
--- hknpWorld::rebuildBodyCollisionCaches (0xc90eb0) writes for an active dynamic body:
+-- hknpWorld::rebuildBodyCollisionCaches (0xc9ec20) writes for an active dynamic body:
 local BODY_MOTION_ID = 0x40              -- hknpBody +0x40 = motion index
 local BODY_FLAGS = 0x44                  -- low bits: 2 = dynamic, 1 | 8 = static / active
 local BODY_DIRTY = 0x48                  -- u16, rebuild ORs in 1
@@ -52,8 +52,8 @@ local INVALID_AABB = 0x7fffff7fff7fffff  -- written to +0 (and 0 to +8): "never 
 -- group 0, so the pair check always goes through the table.
 local NOCLIP_LAYER = 63
 -- The lobby follow camera keeps out of walls with a shape cast on layer 22
--- (CameraLocal@Lobby 0x3ba8e0 passes filterInfo 0x16 to the cast wrapper
--- 0x30a4e0, which uses the world filter). No lobby or Training body is on
+-- (CameraLocal@Lobby 0x3bab60 passes filterInfo 0x16 to the cast wrapper
+-- 0x30a750, which uses the world filter). No lobby or Training body is on
 -- layer 22. The battle camera's wall check is not known.
 local CAMERA_LAYER = 22
 -- Layers noclip switches off, with their stock rows (lobbybodyprobe.py with
@@ -65,7 +65,7 @@ local STOCK_ROWS = {[NOCLIP_LAYER] = 0x1, [CAMERA_LAYER] = 0x3217}
 -- Havok freezes a body that leaves the world's broadphase bounds (made static,
 -- motion 0: flags 0x41 - battlebodyprobe.py on a player stuck outside a quest
 -- map). The body's integration posts a BodyExitedBroadPhase event (type 0xb,
--- the event printer 0xce7070 via the dispatcher 0xcbc9b0) at two copies of
+-- the event printer 0xcf4de0 via the dispatcher 0xcca720) at two copies of
 -- the same code; the freeze is done by whoever handles the event. A Lua script
 -- can't turn a static body back into a dynamic one (that needs a new motion),
 -- so noclip stops the event for bodies on the noclip layer instead. Each
@@ -78,21 +78,21 @@ local STOCK_ROWS = {[NOCLIP_LAYER] = 0x1, [CAMERA_LAYER] = 0x3217}
 -- bounds and every other body are untouched. Applied the first time noclip
 -- is ticked and left in (it only matters to layer 63, which nothing else uses).
 local FREEZE_EVENT_SITES = {
-    {offset = 0xd1a55f,
+    {offset = 0xd282cf,
      stock = {0x8b,0x43,0x70, 0x48,0x8d,0x54,0x24,0x6c, 0x48,0x8b,0x8f,0xb0,0x03,0x00,0x00,
               0x66,0x44,0x89,0x74,0x24,0x6c, 0xc7,0x44,0x24,0x6e,0x00,0x04,0x0b,0x00,
               0x89,0x44,0x24,0x74, 0x48,0x8b,0x01, 0xff,0x50,0x18,
-              0x0f,0x28,0x35,0x43,0x9c,0x47,0x00, 0x44,0x0f,0x28,0x55,0xb0, 0x44,0x0f,0x28,0x4d,0xa0},
+              0x0f,0x28,0x35,0xb3,0xc0,0x47,0x00, 0x44,0x0f,0x28,0x55,0xb0, 0x44,0x0f,0x28,0x4d,0xa0},
      noclip = {0x80,0x7b,0x6c,0x3f, 0x74,0x32,
                0x8b,0x43,0x70, 0x48,0x8d,0x54,0x24,0x6c, 0x48,0x8b,0x8f,0xb0,0x03,0x00,0x00,
                0x66,0x44,0x89,0x74,0x24,0x6c, 0xc7,0x44,0x24,0x6e,0x00,0x04,0x0b,0x00,
                0x89,0x44,0x24,0x74, 0x48,0x8b,0x01, 0xff,0x50,0x18,
                0x44,0x0f,0x28,0x55,0xb0, 0x44,0x0f,0x28,0x4d,0xa0, 0x90}},
-    {offset = 0xdad0de,
+    {offset = 0xdbae4e,
      stock = {0x8b,0x43,0x70, 0x48,0x8d,0x54,0x24,0x70, 0x49,0x8b,0x8c,0x24,0xb0,0x03,0x00,0x00,
               0x66,0x89,0x7c,0x24,0x70, 0xc7,0x44,0x24,0x72,0x00,0x04,0x0b,0x00,
               0x89,0x44,0x24,0x78, 0x48,0x8b,0x01, 0xff,0x50,0x18,
-              0x0f,0x28,0x3d,0xc4,0x70,0x3e,0x00, 0x44,0x0f,0x28,0x55,0xc0, 0x44,0x0f,0x28,0x4d,0xb0},
+              0x0f,0x28,0x3d,0x34,0x95,0x3e,0x00, 0x44,0x0f,0x28,0x55,0xc0, 0x44,0x0f,0x28,0x4d,0xb0},
      noclip = {0x80,0x7b,0x6c,0x3f, 0x74,0x32,
                0x8b,0x43,0x70, 0x48,0x8d,0x54,0x24,0x70, 0x49,0x8b,0x8c,0x24,0xb0,0x03,0x00,0x00,
                0x66,0x89,0x7c,0x24,0x70, 0xc7,0x44,0x24,0x72,0x00,0x04,0x0b,0x00,
@@ -203,7 +203,7 @@ local function PlayerPhysics()
 end
 
 -- Gives the body a new collisionFilterInfo and rebuilds its collision caches
--- the way 0xc90eb0 does. Only for an active dynamic body (the player while
+-- the way 0xc9ec20 does. Only for an active dynamic body (the player while
 -- the game runs); returns false otherwise, so the caller tries again later.
 local function SetFilterInfo(world, body, bodyId, filterInfo)
     local flags = ReadInt(body + BODY_FLAGS, true)
@@ -221,14 +221,14 @@ end
 
 -- Turning collision back on needs the rebuild repeated: the game applies
 -- physics changes at a safe point before its step (XG::HavokWorld command
--- processor 0x303b90, run from JobCallbackPreUpdatePhys), while this script
+-- processor 0x303e00, run from JobCallbackPreUpdatePhys), while this script
 -- writes from the render thread. One rebuild left the player without
 -- collision (seen in game, twice); 10 rebuilds 100 ms apart from
 -- ClaudeTools\lobbycacherebuild.py brought it back (seen in game). Here: one every
 -- REBUILD_INTERVAL frames, REBUILD_COUNT times (about 1 s at 60 fps).
 -- Only an awake body can be rebuilt: standing still (e.g. stuck in a wall)
 -- puts it to sleep (flags 0x10042, probe), and the game's rebuild wakes it
--- first with 0xc754d0, which a script can't call. So the rebuilds wait until
+-- first with 0xc83240, which a script can't call. So the rebuilds wait until
 -- the player moves, which wakes the body.
 local REBUILD_COUNT = 10
 local REBUILD_INTERVAL = 6
@@ -340,41 +340,41 @@ end
 -- files.ReadGameFile: loose data\ first, then the .cpk archives, so x2m and
 -- Revamp items are in it). Inventory and skills are save-wide; the game
 -- writes them with its next save.
--- Found by reading the save serializer (0x85afb0) and the exe's own
+-- Found by reading the save serializer (0x869120) and the exe's own
 -- give/unlock calls (Research_Notes\save-flags-and-unlocks.md "Inventory and
 -- skills in memory").
-local SAVE_MANAGER = 0x15545b0           -- save manager*, holds the inventory and skill lists
-local MANAGER_INVENTORY = 0x20d8         -- manager +0x20d8 = inventory (0x81ac10), written to the save at +0x1410
-local MANAGER_SKILLS = 0x4098            -- manager +0x4098 = skill lists (0x81acb0), written to the save at +0xb430
+local SAVE_MANAGER = 0x1568310           -- save manager*, holds the inventory and skill lists
+local MANAGER_INVENTORY = 0x20e8         -- manager +0x20e8 = inventory (0x828bb0), written to the save at +0x1410
+local MANAGER_SKILLS = 0x40a8            -- manager +0x40a8 = skill lists (0x828c50), written to the save at +0xb430
 local LIST_SIZE = 0x10                   -- one std::list per inventory type / skill category: +0 head node, +8 count
 local NODE_ITEM_ID = 0x14                -- inventory list node: +0 next, +0x10 type, +0x14 id, +0x18 count
 local NODE_ITEM_COUNT = 0x18
-local INVENTORY_CAPACITY = 0x400         -- add-item primitive 0x82ce30 refuses more nodes (0x100 for QQ bangs)
-local GIVE_ITEM = 0x612ea0               -- (type, id, count, silent) -> 1/0; checks the item exists in the IDB, then 0x846d70
-local FIND_SKILL = 0x83e770              -- (skill lists, category, ID2) -> skill record or 0
-local SET_SKILL_UNLOCKED = 0x83eac0      -- (record, value): record +0 = value + the game's change event (callers pass 1)
+local INVENTORY_CAPACITY = 0x400         -- add-item primitive 0x83af40 refuses more nodes (0x100 for QQ bangs)
+local GIVE_ITEM = 0x616b80               -- (type, id, count, silent) -> 1/0; checks the item exists in the IDB, then 0x854e80
+local FIND_SKILL = 0x84c880              -- (skill lists, category, ID2) -> skill record or 0
+local SET_SKILL_UNLOCKED = 0x84cbd0      -- (record, value): record +0 = value + the game's change event (callers pass 1)
 -- DLC gate, read from the game's loaded IDB data (so flags cleared in the
 -- loaded data count). IDB record (0x310 bytes): +0 id, +0xc type, +0xe DLC_FLAG.
-local FIND_ITEM_RECORD = 0x616d60        -- (inventory type, id) -> loaded IDB record or 0
-local IDB_MANAGER = 0x15545a8            -- loaded IDB files; 0x85c8f0(manager, index) -> raw file data
-local IDB_FILE_DATA = 0x85c8f0
-local SKILL_IDB_INDEX = 9                -- skill_item.idb (0x10c85a0 maps give types 10-15 to it)
+local FIND_ITEM_RECORD = 0x61aa00        -- (inventory type, id) -> loaded IDB record or 0
+local IDB_MANAGER = 0x1568308            -- loaded IDB files; 0x86aa60(manager, index) -> raw file data
+local IDB_FILE_DATA = 0x86aa60
+local SKILL_IDB_INDEX = 9                -- skill_item.idb (0x10d6f80 maps give types 10-15 to it)
 local IDB_COUNT, IDB_FIRST = 0x8, 0xc    -- file header: record count, offset of the first record
-local IDB_RECORD_SIZE = 0x310            -- 0x40 item + 3 effects of 0xf0 (0x851020's stride)
+local IDB_RECORD_SIZE = 0x310            -- 0x40 item + 3 effects of 0xf0 (0x85f180's stride)
 local IDB_RECORD_TYPE, IDB_RECORD_DLC = 0xc, 0xe
 local IDB_MAX_RECORDS = 0x2000           -- bound for the skill walk (vanilla has 843)
-local NO_PACK = 0x44                     -- 0x612f30: DLC_FLAG -1 / 0xff -> 0x44 = none
-local ALWAYS_OWNED_PACK = 0x43           -- 0x2b9c30 returns 1 for packs >= 0x43
+local NO_PACK = 0x44                     -- 0x616c10: DLC_FLAG -1 / 0xff -> 0x44 = none
+local ALWAYS_OWNED_PACK = 0x43           -- 0x2b9d50 returns 1 for packs >= 0x43
 -- (pack, 1) -> 1 if the player has that DLC content pack, else 0; the check the
--- game runs on an IDB entry's DLC_FLAG (e.g. 0x6639b0).
-local DLC_PACK_OWNED = 0x2b9c30
+-- game runs on an IDB entry's DLC_FLAG (e.g. 0x667880).
+local DLC_PACK_OWNED = 0x2b9d50
 local MAX_SHOWN = 300                    -- rows the dropdown lists; type more to narrow it down
 local COUNT_INTERVAL = 0.5               -- seconds between re-reading the selected item's count
 
 -- The item list's groups. Items: (label, IDB file under system\item\, inventory
 -- type = the save's EquipmentType, Xv2CoreLib SAV_File.cs, the first argument
--- of 0x612ea0; names from msg\<msg>_en.msg by entry id = the IDB record's
--- Name_MsgID). Max per item 99, important items 1 (add primitive 0x82ce30).
+-- of 0x616b80; names from msg\<msg>_en.msg by entry id = the IDB record's
+-- Name_MsgID). Max per item 99, important items 1 (add primitive 0x83af40).
 local ITEM_GROUPS = {
     {"Tops", "costume_top", 0, "proper_noun_costume_name"},
     {"Bottoms", "costume_bottom", 1, "proper_noun_costume_name"},
@@ -388,7 +388,7 @@ local ITEM_GROUPS = {
 }
 local IMPORTANT_ITEMS_TYPE, IMPORTANT_ITEMS_MAX, ITEM_MAX = 7, 1, 99
 -- Skills: (label, CUS category index = the skill list index in the save
--- manager's lists (mgr+0x4098, CUS order: super, ultimate, evasive, unknown,
+-- manager's lists (mgr+0x40a8, CUS order: super, ultimate, evasive, unknown,
 -- blast, awoken); names from the msg file by entry name = prefix + ID2, 4 digits).
 local SKILL_GROUPS = {
     {"Super skills", 0, "proper_noun_skill_spa_name", "spe_skill_"},
@@ -618,7 +618,7 @@ end
 
 -- The entry's loaded IDB record, or nil. Items: the game's own lookup. Skills:
 -- skill_item.idb holds every category under one id range, so match id and
--- type (= skill list index), which the id-only lookup 0x851020 can't.
+-- type (= skill list index), which the id-only lookup 0x85f180 can't.
 local function IdbRecord(entry)
     if entry.group.kind == "item" then
         local record = CallFunction(BASE_ADDR + FIND_ITEM_RECORD, entry.group.type, entry.id)
@@ -640,7 +640,7 @@ local function IdbRecord(entry)
 end
 
 -- The DLC pack the entry needs (its loaded IDB DLC_FLAG, mapped like
--- 0x612f30), or nil for none / no record (roster-only skills).
+-- 0x616c10), or nil for none / no record (roster-only skills).
 local function DlcPack(entry)
     local record = IdbRecord(entry)
     if not record then return nil end

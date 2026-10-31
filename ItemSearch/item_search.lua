@@ -10,11 +10,12 @@
 -- player scrolls through) is rebuilt by the game from its "all" array
 -- whenever the category or sort changes. The search squeezes the matching
 -- entries to the front of the shown array, shortens it, and has the list's
--- script (ITEMLIST.iggy with the mod's ActionScript, swapped in by the loader
--- as the game reads the file) request its rows again; the all
+-- script (ITEMLIST.iggy with the mod's ActionScript edit, merged in by the
+-- loader's UI library as the game reads the file, after any other mod's edit
+-- of the same menu) request its rows again; the all
 -- array is never touched, and clearing the search lets the game rebuild the
 -- shown array. The highlighted item stays highlighted while it matches.
--- Research_Notes\ui-iggy-and-textures.md "Item lists"; ClaudeTools\itemlist_probe.py.
+-- Research_Notes\ui-item-lists.md "Item lists"; ClaudeTools\itemlist_probe.py.
 --
 -- Favorites: F (keyboard) or clicking the left stick (controller) on an item
 -- in a Customize list (equipment, skills) marks it as a favorite, or
@@ -23,6 +24,8 @@
 -- rows are favorites); the search still filters them. They are kept per Steam
 -- account (read from the loaded save, as Battle Styles does), not per
 -- character, in favorites.sav next to this script.
+
+LUA_NAME = "ItemSearch"                   -- owner name of the menu edit
 
 -- Settings
 -- The loader's search box this script uses. Battle Styles shows the same id
@@ -63,13 +66,13 @@ local function MenuSectionWanted()
   return text:match('"debug_menu"%s*:%s*true') ~= nil
 end
 
--- DBXV2.exe 1.26.01
-local ITEM_LIST_VTABLE = 0x10aa508        -- Menu::ItemList (RTTI)
-local UPDATE_SLOT = 9                     -- vtable slot 9 = 0x5417e0, the list's per-frame update (rcx = list, xmm1 = time)
-local UPDATE_FUNCTION = 0x5417e0
-local ROW_NAME = 0x543090                 -- (list, std::wstring* out, shownIndex): the row's name as the list shows it (row pusher 0x545340 uses it)
-local REBUILD_SHOWN = 0x542640            -- (list): shown = all filtered by category, sorted
-local SET_UI_INT = 0x2c81a0               -- (menu, variable, value): sets one of the menu's Iggy int variables
+-- DBXV2.exe 1.27
+local ITEM_LIST_VTABLE = 0x10b86a0        -- Menu::ItemList (RTTI)
+local UPDATE_SLOT = 9                     -- vtable slot 9 = 0x5422d0, the list's per-frame update (rcx = list, xmm1 = time)
+local UPDATE_FUNCTION = 0x5422d0
+local ROW_NAME = 0x543b80                 -- (list, std::wstring* out, shownIndex): the row's name as the list shows it (row pusher 0x545e30 uses it)
+local REBUILD_SHOWN = 0x543130            -- (list): shown = all filtered by category, sorted
+local SET_UI_INT = 0x2c82a0               -- (menu, variable, value): sets one of the menu's Iggy int variables
 -- ITEMLIST.iggy's game -> script variables (ReceiveType_* in its script):
 -- 5 = ListElemMax (entry count), 2 = RequestResume, which the patched script
 -- reads as "rows changed" when it carries REFRESH_TAG (as3\ItemList.as
@@ -79,15 +82,15 @@ local UI_ENTRY_COUNT, UI_REFRESH = 5, 2
 local REFRESH_TAG = 0x5E000000
 local FAVORITE_SHIFT, FAVORITE_COUNT_MAX = 14, 0x3FF
 local FAVORITES_AFTER_FIRST, ROW_MAX = 0x2000, 0x1FFF
--- The menu file and the script the loader swaps into it (files.ReplaceIggyScript)
--- - only over the vanilla script: its ABC size and FNV-1a 64 hash, printed
--- by ClaudeTools\iggy\itemlist_abc.py
+-- The menu file and the mod's edit of its script, which the loader's UI
+-- library (uilib) merges into it: the whole edited ABC, its FFDec merge base
+-- and the game ABC it was built over, all in this script's mod folder
+-- (ClaudeTools\iggy\itemlist_abc.py builds them)
 local ITEMLIST_IGGY = "ui/iggy/ITEMLIST.iggy"
-local ITEMLIST_ABC = "ItemList.abc"       -- in this script's mod folder
-local VANILLA_ABC_SIZE, VANILLA_ABC_HASH = 59410, 0x8dd6dfe18ce480c6
-local HEAP_FREE = 0xf4ec78                -- import slot of xgcore XG::HeapFree(void*), frees std::wstring buffers (0x54321c)
+local ITEMLIST_ABC, ITEMLIST_BASE, ITEMLIST_GAME = "ItemList.abc", "ItemList_base.abc", "ItemList_game.abc"
+local HEAP_FREE = 0xf5cc98                -- import slot of xgcore XG::HeapFree(void*), frees std::wstring buffers (0x543d0c)
 -- Menu::ItemList fields (live probe with the torso list open; the sequence
--- after the category change in the command handler 0x544220, case 1 at 0x54426f)
+-- after the category change in the command handler 0x544d10, case 1 at 0x544d5f)
 local LIST_MODE = 0x1f0                   -- which list (15 = equipment torso)
 -- The Customize lists, the only ones with favorites: the list script's
 -- ModeType_CustomizeItem/Skill/Costume (as3\ItemList.as). Clothes,
@@ -101,9 +104,9 @@ local ENTRY_SIZE = 0xb0                   -- shown/all entries: +0 type, +4 id (
 local IDLE_STATE = 2
 local HIDDEN_STATE = 1                    -- closed: the equipment screen's list object keeps ticking hidden
 -- The loaded save's decrypted image, kept by the save/system singleton
--- [0x1554448] at +0x68: "#SAV", then the owning Steam id at +8 XORed with
+-- [0x15681a8] at +0x68: "#SAV", then the owning Steam id at +8 XORed with
 -- "thebecon" (BattleStyles style_menu.cpp SteamAccount; Xv2CoreLib SAV_File.cs)
-local SAVE_SYSTEM, SAVE_IMAGE, SAVE_STEAM_ID = 0x1554448, 0x68, 8
+local SAVE_SYSTEM, SAVE_IMAGE, SAVE_STEAM_ID = 0x15681a8, 0x68, 8
 local STEAM_ID_XOR = 0x7468656265636F6E
 
 -- The update stub: vtable slot 9 jumps through it, so it sees every list that
@@ -160,7 +163,7 @@ local function ReadWideString(address)
   return readString(text, length, true) or ""
 end
 
--- Frees a wstring's heap buffer the way 0x5431e1 does.
+-- Frees a wstring's heap buffer the way 0x543cd1 does.
 local function FreeWideString(address)
   local capacity = readQword(address + 0x18)
   if capacity < 8 then return end
@@ -470,9 +473,14 @@ function _OnInit()
   status = InstallStub()
   -- without the list script the filter still works, but the rows only
   -- change when the list is opened again
-  if not files then ConsolePrint("XV2 Mod Loader is too old to swap the list script; update it", 2) return end
-  local replaced, reason = files.ReplaceIggyScript(ITEMLIST_IGGY, ITEMLIST_ABC, VANILLA_ABC_SIZE, VANILLA_ABC_HASH)
-  if not replaced then ConsolePrint("list script not replaced (" .. reason .. "): rows redraw only when a list is reopened", 2) end
+  if not uilib then
+    ConsolePrint("the mod loader's UI library is missing (update XV2 Mod Loader): rows redraw only when a list is reopened", 2)
+    return
+  end
+  local registered, reason = uilib.EditScript(ITEMLIST_IGGY, ITEMLIST_ABC, ITEMLIST_BASE, ITEMLIST_GAME)
+  if not registered then
+    ConsolePrint("list script not registered (" .. tostring(reason) .. "): rows redraw only when a list is reopened", 2)
+  end
 end
 
 function _OnFrame()
@@ -514,7 +522,7 @@ end
 
 function _OnMenu()
   ui.Text("Item search: " .. status)
-  ui.Text("List script: " .. (files and files.IggyScriptStatus(ITEMLIST_IGGY) or "not replaced"))
+  ui.Text("List script: " .. (files and files.Status(ITEMLIST_IGGY) or "not edited"))
   if activeList then
     local _, count = ShownRange(activeList)
     ui.Text(string.format("List %X  mode %d  state %d  shown %d  cursor %d", activeList,

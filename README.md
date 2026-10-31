@@ -2,11 +2,12 @@
 
 A collection of primarily slop-coded mods for Xenoverse 2 I made for myself mostly. It's made to work alongside XV2PATCHER.
 
-Mods for Dragon Ball Xenoverse 2 (game version 1.26.01), built around a small
+Mods for Dragon Ball Xenoverse 2 (**game version 1.27**), built around a small
 mod loader. Each folder is its own project with a README that explains what
 it does and how to install it.
 
-Tested primarily with 1.26.01 game, 4.7 XV2Patcher, 5.1.1 Revamp.
+Tested primarily with XV2Patcher 4.7 and Revamp 5.1.1, on game 1.26.01 and
+then 1.27 (the current releases are for 1.27 only).
 
 ## Installing
 
@@ -16,17 +17,19 @@ packages are on the [Releases](../../releases) page.
 
 ## Mods
 
-| Mod | What it does |
-|---|---|
-| [XV2 Mod Loader](XV2ModLoader/README.md) | Loads DLL mods and Lua scripts from their own folders; an in-game menu; launchers for modded/unmodded play |
-| [Battle Styles](BattleStyles/README.md) | Equipable movesets for created characters |
-| [Chara Search](CharaSearch/README.md) | Search and favorites in the character select |
-| [Combined Super Stats](CombinedSupers/README.md) | Supers and ultimates scale off Strike + Ki Blast Supers combined |
-| [Debug Menu](DebugMenu/README.md) | Noclip and an item getter in the loader's menu |
-| [Effect Texture Limit](EffectTextureLimit/README.md) | Effect texture files can hold 255 textures instead of 128 |
-| [General QoL](General_QoL/README.md) | Unlocks and quality-of-life changes, each switchable |
-| [Item Search](ItemSearch/README.md) | A search box over the item lists |
-| [SaveSync](SaveSync/README.md) | Shares unlock progress between your created characters |
+| Mod | Version | Game | What it does |
+|---|---|---|---|
+| [XV2 Mod Loader](XV2ModLoader/README.md) | 1.1.0 | 1.27 | Loads DLL mods and Lua scripts from their own folders; an in-game menu; launchers for modded/unmodded play |
+| [Battle Styles](BattleStyles/README.md) | 1.1.0 | 1.27 | Equipable movesets for created characters |
+| [Chara Search](CharaSearch/README.md) | 1.1.0 | 1.27 | Search and favorites in the character select |
+| [Combined Super Stats](CombinedSupers/README.md) | 1.1.0 | 1.27 | Supers and ultimates scale off Strike + Ki Blast Supers combined |
+| [Debug Menu](DebugMenu/README.md) | 1.0.1 | 1.27 | Noclip and an item getter in the loader's menu |
+| [Effect Texture Limit](EffectTextureLimit/README.md) | 1.1.1 | 1.27 | Effect texture files can hold 255 textures instead of 128 |
+| [General QoL](General_QoL/README.md) | 1.1.0 | 1.27 | Unlocks and quality-of-life changes, each switchable |
+| [Item Search](ItemSearch/README.md) | 1.1.0 | 1.27 | A search box over the item lists |
+| [Multi Accessory](MultiAccessory/README.md) | 0.1.0 | 1.27 | Up to two extra accessories per created character |
+| [SaveSync](SaveSync/README.md) | 1.1.0 | 1.27 | Shares unlock progress between your created characters |
+| [Training QoL](Training_QoL/README.md) | 1.1.0 | 1.27 | In Training, control the partner (D-pad up) or use the photo camera (D-pad down) |
 
 [Research_Notes](Research_Notes/RESEARCH_NOTES.md) holds what was found
 about the game's internals while making them.
@@ -34,7 +37,9 @@ about the game's internals while making them.
 ## Versions
 
 Every mod has its own version in its `VERSION` file and a `CHANGELOG.md`;
-release packages are named `<Mod>-<version>.zip`.
+the game version they are built for is in `GAME_VERSION`. Release packages
+are named `<Mod>-<version>-XV2_<game version>.zip` (for example
+`BattleStyles-1.1.0-XV2_1.27.zip`) and are tagged `<Mod>-<version>`.
 
 ## Licence
 

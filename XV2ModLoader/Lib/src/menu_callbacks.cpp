@@ -12,8 +12,8 @@
 //  string into the menu's user data, which the AS reads with
 //  m_callback.GetUserDataString(index).
 //
-//  Call record (Iggy, seen in SelectCharacter's handler 0x5e1630 on
-//  1.26.01): argument count at +0x10, arguments 0x20 apart from +0x28 - the
+//  Call record (Iggy, seen in SelectCharacter's handler 0x5e2160 on
+//  1.27): argument count at +0x10, arguments 0x20 apart from +0x28 - the
 //  sendType (a double) at +0x28, the value at +0x48 (a double, or a UTF-8
 //  char* for a string). User data (OggyBase): a vector at +0x160 (begin) /
 //  +0x168 (end) of 16-byte entries {int set, int type, value}.
@@ -46,7 +46,7 @@ typedef void(__fastcall* UserCallbackFn)(void* menu, const uint8_t* call);
 
 // The Iggy call record (see the header comment).
 const size_t kCallArgCount = 0x10, kCallSendType = 0x28, kCallValue = 0x48;
-// OggyBase user data. SetUserDataStr (0x2c8240) stores type 6 and a
+// OggyBase user data. SetUserDataStr (0x2c8340) stores type 6 and a
 // wchar_t pointer, sets "set" and menu +0x54 bit 0 (user data changed).
 // It is not called: xv2patcher hooks it and stops the game ("ResolveCode:
 // Cannot map value") for slots it doesn't know - chara-select-search.md.
@@ -291,7 +291,7 @@ int MenusHookCallback(lua_State* L)
     }
     const std::string owner = ScriptName(L);
     std::string reason;
-    if (!IsGame12601()) reason = "needs DBXV2.exe 1.26.01";
+    if (!IsSupportedGame()) reason = "needs DBXV2.exe 1.27";
     else if (takes.empty()) reason = "no sendTypes";
     if (!reason.empty()) {
         lua_pushboolean(L, false);

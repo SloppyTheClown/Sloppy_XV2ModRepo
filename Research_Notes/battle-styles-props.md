@@ -42,7 +42,7 @@ the game skins part meshes from it - with their tracks kept;
 the CaC's part EMDs, or a separate model on the bone (a physics object
 is rigid on one BoneToAttach - fine for staffs/gun, not the spear or the
 extending pole). **Unknowns:** how `<RACE>_000.esk` is loaded (the CMS
-getter 0x2c5510 has no ESK field); whether part EMD bones resolve by
+getter 0x2c5610 has no ESK field); whether part EMD bones resolve by
 name against the character skeleton; whether a bone added at load can
 be attached to.
 
@@ -98,7 +98,7 @@ ESK bones generated at runtime for every race; multi-bone props (spear,
 pole). (G16's fist: parked, see build 8.)
 
 **Where the skeleton path comes from (static, 1.26.01 image):** the only
-`.esk` string users are CharaResource loaders 0x298240 and 0x2987f0. Both
+`.esk` string users are CharaResource loaders 0x298300 and 0x2988b0. Both
 ask the CMS getter for **field 0 (BCS)** (wrapper calls 0x2982ea,
 0x298894), load it, cut the path at its last '.', and append "_000"
 (0xf74dec) + an LOD suffix (0x29ef40: table 0x1477790 = "", "_LOD01",
@@ -371,3 +371,19 @@ Fix:
 
 **Confirmed in game (2026-10-14):** the club shows after re-converting
 Kaido, size and grip fine. The D_* dragon bones stay ignored.
+
+## Effect props: prop bones without a mesh (Dark King Fu, 2026-10-30)
+
+Fu's "sword" is an effect, not a mesh: the x2m's CHAR_EEPK is
+`chara/XBF/XBF.eepk` (the converter registers it for the style), whose
+effects attach to `a_x_sword1` / `a_x_sword3` (bone names in the EEPK:
+those + b_C_Base, b_C_Pelvis, b_R_ArmRoll, g_R_Hand). The CaC skeleton
+had no such bone (FitPropsToRace gave up with "prop bones but no mesh
+skinned to them"), so the game drew the sword at the hip pointing down
+(seen in game by the user on MAM). Fix (built + installed, NOT seen in
+game): animated prop bones with no mesh still give a fitted BCS (the race's,
+unchanged) + the skeletons with the bones; log note "bones only". Offline
+`prop_fit_test 9X8:MAM`: 8 prop bones, MAM.9X8_000.esk has a_x_sword1-4.
+G16 now gets its two arm bones the same way (its fist may be an effect
+too - parked). Converter: no change needed (the style ESK/EAN already
+carry the bones).

@@ -332,12 +332,13 @@ package action_script
       
       internal static const EditMenuNameInfoList:Array = [EditMenuTypeVoice,EditMenuTypeName];
       
-      // BattleStyles: + EditMenuTypeBattleStyle (Customize runs in mode 3, seen live).
-      internal static const EditMenuClothInfoList:Array = [EditMenuTypeClothTop,EditMenuTypeClothBottom,EditMenuTypeClothGloves,EditMenuTypeClothShoes,EditMenuTypeClothAccessory,EditMenuTypeClothMaterial,EditMenuTypeClothTalisman,EditMenuTypeBattleStyle];
+      internal static const EditMenuClothInfoList:Array = [EditMenuTypeClothTop,EditMenuTypeClothBottom,EditMenuTypeClothGloves,EditMenuTypeClothShoes,EditMenuTypeClothAccessory,EditMenuTypeClothMaterial,EditMenuTypeClothTalisman];
       
       internal static const EditMenuClothColorInfoList:Array = [EditMenuTypeClothTopColor,EditMenuTypeClothBottomColor,EditMenuTypeClothGlovesColor,EditMenuTypeClothShoesColor];
       
-      internal static const EditMenuSkillInfoList:Array = [EditMenuTypeSkillSpa2,EditMenuTypeSkillSpa1,EditMenuTypeSkillSpa3,EditMenuTypeSkillSpa4,EditMenuTypeSkillUlt2,EditMenuTypeSkillUlt1,EditMenuTypeSkillMet,EditMenuTypeSkillEsc];
+      // BattleStyles: Battle Style under the skills (btn_9): the Skills page is mode 4
+      // (seen in the exe: menu start 0x4f7bb0 pushes only the skills in mode 4).
+      internal static const EditMenuSkillInfoList:Array = [EditMenuTypeSkillSpa2,EditMenuTypeSkillSpa1,EditMenuTypeSkillSpa3,EditMenuTypeSkillSpa4,EditMenuTypeSkillUlt2,EditMenuTypeSkillUlt1,EditMenuTypeSkillMet,EditMenuTypeSkillEsc,EditMenuTypeBattleStyle];
       
       internal static const EditMenuVoiceInfoList:Array = [EditMenuTypeVoice,EditMenuTypeNameNoEdit];
       
@@ -349,9 +350,7 @@ package action_script
       
       internal static const EditMenuTabInfoTypeTabText:int = 2;
       
-      // BattleStyles: Battle Style under Super Soul (btn_8) on both equip tabs: mode 3
-      // (EditMenuClothInfoList) is the Customize menu in game, 7 kept for safety.
-      internal static const EditMenuCusClothInfoList:Array = [EditMenuTypeClothTop,EditMenuTypeClothBottom,EditMenuTypeClothGloves,EditMenuTypeClothShoes,EditMenuTypeClothAccessory,EditMenuTypeClothMaterial,EditMenuTypeClothTalisman,EditMenuTypeBattleStyle];
+      internal static const EditMenuCusClothInfoList:Array = [EditMenuTypeClothTop,EditMenuTypeClothBottom,EditMenuTypeClothGloves,EditMenuTypeClothShoes,EditMenuTypeClothAccessory,EditMenuTypeClothMaterial,EditMenuTypeClothTalisman];
       
       internal static const EditMenuTabInfoList:Array = [[null],[[EditMenuBaseInfoList,SendTypeRequestMenuBase,StringList.TabText_CreateBase],[EditMenuColorInfoList,SendTypeRequestMenuColor,StringList.TabText_CreateColor]],[[EditMenuNameInfoList,SendTypeRequestMenuName,null]],[[EditMenuClothInfoList,SendTypeRequestMenuCloth,StringList.TabText_ClothEquip],[EditMenuClothColorInfoList,SendTypeRequestMenuClothColor,StringList.TabText_ClothColor]],[[EditMenuSkillInfoList,SendTypeRequestMenuSkill,null]],[[EditMenuBaseInfoList,SendTypeRequestMenuBase,StringList.TabText_CreateBase],[EditMenuColorInfoList,SendTypeRequestMenuColor,StringList.TabText_CreateColor]],[[EditMenuVoiceInfoList,SendTypeRequestMenuVoice,null]],[[EditMenuCusClothInfoList,SendTypeRequestMenuCusCloth,StringList.TabText_ClothEquip],[EditMenuSkillInfoList,SendTypeRequestMenuCusSkill,"スキル"]],[[EditMenuBarberInfoList,SendTypeRequestMenuBarber,null]]];
       

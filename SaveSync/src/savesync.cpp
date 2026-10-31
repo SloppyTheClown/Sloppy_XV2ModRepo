@@ -29,7 +29,7 @@
 //  (the readers the save loader uses), and the result is checked by
 //  writing the state out again - only an exact match is saved to disk.
 //
-//  Research_Notes\save-flags-and-unlocks.md "SaveSync in game" has the
+//  Research_Notes\savesync.md "SaveSync in game" has the
 //  findings (addresses, layouts, the save thread's flags).
 // ---------------------------------------------------------------------------
 #include "savesync.h"
@@ -49,50 +49,50 @@
 template <typename T> static T& Field(void* object, size_t offset) { return *(T*)((uint8_t*)object + offset); }
 
 // ------------------------------------------------------------ game state ---
-// Save data singleton [0x1554448] (1.26.01). It holds the save's decrypted
+// Save data singleton [0x15681a8] (1.27). It holds the save's decrypted
 // image at +0x68 (file offset F = +0x68 + F; matched byte for byte against
 // the decrypted DBXV2.sav, ClaudeTools\save\steamid_probe.py). The image starts
 // "#SAV" and holds the owning Steam id at +8, XORed with "thebecon"
 // (Xv2CoreLib SAV_File.cs).
-static const uintptr_t kSaveData = 0x1554448;
+static const uintptr_t kSaveData = 0x15681a8;
 static const size_t kSaveImage = 0x68;
 static const size_t kSaveImageSteamId = 8;
 static const uint64_t kSteamIdXor = 0x7468656265636F6E;
 
-// The serializer every save runs before encrypting (0x85afb0, called from
-// CAccount's save-now 0x2d9200 with these four parts of the save data:
+// The serializer every save runs before encrypting (0x869120, called from
+// CAccount's save-now 0x2d9300 with these four parts of the save data:
 // the image and three more blocks at +0x7b3f8, +0xb0880, +0xdf260).
-static const uintptr_t kSerializeSave = 0x85afb0;
+static const uintptr_t kSerializeSave = 0x869120;
 static const size_t kSerializePart2 = 0x7b3f8, kSerializePart3 = 0xb0880, kSerializePart4 = 0xdf260;
 typedef void (__fastcall* SerializeSaveFn)(void* image, void* part2, void* part3, void* part4);
 
-// The save account object [0x156f118] (CAccount). +0x6c: a save is being
+// The save account object [0x1582e78] (CAccount). +0x6c: a save is being
 // written by its thread (the image must not change); +0x94: a second save
-// is queued (its copy at save data +0x12a260). Vtable 0xf9a6f8 slot 13
-// (+0x68) = save now (0x2d9200; does nothing while save data +0x254458 is
-// 0, i.e. before a save is loaded). Nothing calls 0x2d9200 directly, so
+// is queued (its copy at save data +0x12a260). Vtable 0xfa8778 slot 13
+// (+0x68) = save now (0x2d9300; does nothing while save data +0x254458 is
+// 0, i.e. before a save is loaded). Nothing calls 0x2d9300 directly, so
 // hooking the slot sees every save the game makes; the serializer's only
-// other caller (0x2d7f90) is the account's own load/create step.
-static const uintptr_t kAccount = 0x156f118;
+// other caller (0x2d8090) is the account's own load/create step.
+static const uintptr_t kAccount = 0x1582e78;
 static const size_t kAccountSaving = 0x6c, kAccountSaveQueued = 0x94;
-static const uintptr_t kAccountVtable = 0xf9a6f8;
+static const uintptr_t kAccountVtable = 0xfa8778;
 static const int kAccountSaveNowSlot = 13;
-static const uintptr_t kAccountSaveNow = 0x2d9200;
+static const uintptr_t kAccountSaveNow = 0x2d9300;
 typedef void (__fastcall* SaveNowFn)(void* account);
 static SaveNowFn g_origSaveNow = nullptr;
 
-// The CaC manager [0x15545b0]: the playing slot (0x81acc0 get, 0x81af30
-// set) and the per-slot parts the save loader 0x85bb70 reads each slot
+// The CaC manager [0x1568310]: the playing slot (0x828c60 get, 0x828ed0
+// set) and the per-slot parts the save loader 0x869ce0 reads each slot
 // into (it sets the slot, then calls these getters with -1 = "the set slot").
-static const uintptr_t kManager = 0x15545b0;
-static const uintptr_t kGetSlot = 0x81acc0, kSetSlot = 0x81af30;
-static const uintptr_t kFlagsPart = 0x81ad00, kQuestsPart = 0x81ac70, kMentorsPart = 0x81ac30;
+static const uintptr_t kManager = 0x1568310;
+static const uintptr_t kGetSlot = 0x828c60, kSetSlot = 0x828ed0;
+static const uintptr_t kFlagsPart = 0x828ca0, kQuestsPart = 0x828c10, kMentorsPart = 0x828bd0;
 typedef int   (__fastcall* GetSlotFn)(void* manager);
 typedef void  (__fastcall* SetSlotFn)(void* manager, int slot);
 typedef void* (__fastcall* PartOfSlotFn)(void* manager, int slot);
 typedef void* (__fastcall* PartFn)(void* manager);
 
-// The save loader's per-slot readers (0x85bb70, its loop at 0x85bcc5), with
+// The save loader's per-slot readers (0x869ce0, its loop at 0x869e35), with
 // their arguments: save data + slot x stride + offset. The first stride is
 // the main CaC block (0xc6c8 = 50888, Xv2CoreLib CAC_SIZE), the second the
 // DLC block (0x6330 = 25392, CAC_DLC_SIZE); the other two are blocks after
@@ -101,17 +101,17 @@ typedef void* (__fastcall* PartFn)(void* manager);
 //   quests (all quest arrays; the DLC ones at file 524984 = +0x80320; also
 //          Tokipedia, inside the DLC quest block - the self-check shows if not)
 //   mentors (file 125956 = +0x1ec6c)
-static const uintptr_t kReadFlags = 0x841470, kReadQuests = 0x83bbf0, kReadMentors = 0x82fe50;
+static const uintptr_t kReadFlags = 0x84f580, kReadQuests = 0x849d00, kReadMentors = 0x83df60;
 typedef void (__fastcall* ReadPartFn)(void* part, void* a, void* b, void* c);
 typedef void (__fastcall* ReadOnePartFn)(void* part, void* a);
 static const size_t kMainStride = 0xc6c8, kDlcStride = 0x6330, kFlagsStride3 = 0x4c84, kQuestsStride3 = 0x1830;
 static const size_t kFlagsArg1 = 0x17498, kFlagsArg2 = 0x7ef00, kFlagsArg3 = 0xb8e40;
 static const size_t kQuestsArg1 = 0x17e98, kQuestsArg2 = 0x80320, kQuestsArg3 = 0xe8640;
 static const size_t kMentorsArg1 = 0x1ec6c;
-// The set slot's PlayData (0x81acd0: manager + 0x12660 + slot x 0xe880; the
-// loader reads file 126340 into it with 0x83fbf0, a 1:1 copy). Its wish
-// counts sit at +0x68 (0x83f1f0), "more characters" = index 7 (0x84ad70).
-static const uintptr_t kPlayDataPart = 0x81acd0;
+// The set slot's PlayData (0x828c70: manager + 0x12670 + slot x 0xe880; the
+// loader reads file 126340 into it with 0x84dd00, a 1:1 copy). Its wish
+// counts sit at +0x68 (0x84d300), "more characters" = index 7 (0x858e80).
+static const uintptr_t kPlayDataPart = 0x828c70;
 static const size_t kPlayDataWishCounts = 0x68, kWishCharacters = 7;
 static const size_t kFileWishCharacters = 126276 + 168 + kWishCharacters;  // same byte in the image
 static const int kCurrentSlot = -1;
@@ -354,14 +354,14 @@ static bool HookSaveNow(bool& vanilla)
 }
 
 // -------------------------------------------------------- slot menu (AS) ---
-// The save slot menu (EditSlot, vtable 0x10a1a88). Slot 17 (+0x88, vanilla
-// 0x509b60) is the AS callback CallbackUserData("user", sendType, value):
+// The save slot menu (EditSlot, vtable 0x10afc18). Slot 17 (+0x88, vanilla
+// 0x50a640) is the AS callback CallbackUserData("user", sendType, value):
 // argc at +0x10, arg 0 as a double at +0x28, arg 1 at +0x48 (a double, or a
 // UTF-8 char* for a string). The game's own handler ignores sendTypes it
 // does not know.
-static const uintptr_t kEditSlotVtable = 0x10a1a88;
+static const uintptr_t kEditSlotVtable = 0x10afc18;
 static const int kUserCallbackSlot = 17;
-static const uintptr_t kEditSlotCallback = 0x509b60;
+static const uintptr_t kEditSlotCallback = 0x50a640;
 static const size_t kCallArgCount = 0x10, kCallArg0 = 0x28, kCallArg1 = 0x48;
 typedef void (__fastcall* UserCallbackFn)(void* menu, const uint8_t* call);
 static UserCallbackFn g_origEditSlotCallback = nullptr;
@@ -372,7 +372,7 @@ static const int kAnswerTag = 0x10000;
 // The OggyBase user-data vector (+0x160 begin, +0x168 end): 16-byte entries
 // {int set, int type, value}; ints are type 4 with the value at +8. Then
 // menu +0x54 |= 1 (user data changed). Written directly: xv2patcher hooks
-// the setter (0x2c81a0) and maps slots by caller (chara-select-search.md).
+// the setter (0x2c82a0) and maps slots by caller (chara-select-search.md).
 static const size_t kUserDataBegin = 0x160, kUserDataEnd = 0x168, kUserDataEntrySize = 16;
 static const size_t kUserDataType = 4, kUserDataValue = 8;
 static const int kUserDataTypeInt = 4;
@@ -487,7 +487,7 @@ static bool HookEditSlotCallback(bool& vanilla)
 // File request class (General_QoL / Chara Search use the same
 // hook, chained under one mutex): vtable slots 3/4 return the file's data,
 // 6/7 its size; the path is stored inline at +8 (up to 0x118 chars).
-static const uintptr_t kRequestVtable = 0xf9b270;
+static const uintptr_t kRequestVtable = 0xfa92f0;
 static const size_t kRequestPath = 8, kRequestPathMax = 0x118;
 static const char kAvatarSlotPath[] = "ui/iggy/avatar_slot.iggy";  // lower case, '/'
 

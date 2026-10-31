@@ -50,12 +50,12 @@ void ScriptOutput(lua_State* state, int type, const std::string& text)
     if (g_host) g_host->ScriptOutput(state, type, text.c_str());
 }
 
-bool IsGame12601()
+bool IsSupportedGame()
 {
     const uint8_t* image = (const uint8_t*)GetModuleHandleW(nullptr);
     uint32_t pe = *(const uint32_t*)(image + 0x3C);
-    return *(const uint32_t*)(image + pe + 8) == 0x6A63732E &&        // TimeDateStamp
-           *(const uint32_t*)(image + pe + 24 + 56) == 0x1A1F000;     // SizeOfImage
+    return *(const uint32_t*)(image + pe + 8) == 0x6AAA4CB1 &&        // TimeDateStamp
+           *(const uint32_t*)(image + pe + 24 + 56) == 0x1A33000;     // SizeOfImage
 }
 
 std::string ScriptName(lua_State* state)

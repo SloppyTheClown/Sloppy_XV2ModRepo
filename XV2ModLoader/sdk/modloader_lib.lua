@@ -352,13 +352,16 @@ function search.Changes(id) end
 -- files - change game files as the game reads them, or read them
 -- ===========================================================================
 -- path: the game file as the end of its path inside data\ ("ui/iggy/ITEMLIST.iggy";
--- '/' or '\', any case, matched at a folder boundary). One patch per file:
--- when another mod (script or DLL, sdk\xv2_files.h) already patches it, a
--- Replace is refused; the same script calling again replaces its own patch.
+-- '/' or '\', any case, matched at a folder boundary). Every patched file
+-- has a pipeline: each mod's patch in turn gets the file as the ones before
+-- it left it. Replace* patches run first and allow one mod per file (another
+-- mod's, script or DLL (sdk\xv2_files.h), is refused); the same script
+-- calling again replaces its own patch. To have several mods change one
+-- menu's script, use uilib.EditScript instead.
 -- A patch applies to every later read of the file (menus are read each time
 -- they open, most other files once), so register in the script's main body.
 -- Only files the game reads through its normal loader; XV2Patcher's own
--- reads (e.g. .x2s) don't pass. DBXV2.exe 1.26.01 only. A script's patches
+-- reads (e.g. .x2s) don't pass. DBXV2.exe 1.27 only. A script's patches
 -- are dropped when the scripts reload (F1) and made again as they run.
 -- File arguments are relative to the script's mod folder unless absolute.
 
@@ -388,21 +391,27 @@ function files.ReplaceFile(path, file) end
 ---@return string? reason why it was refused
 function files.ReplaceIggyScript(path, abcFile, vanillaAbcSize, vanillaAbcHash) end
 
---- Removes this script's patch of `path`; later reads get the game's file.
+--- Removes this script's patches of `path`; later reads go through the rest.
 ---@param path string
 ---@return boolean removed false when the script had none
 function files.Remove(path) end
 
 --- What happened when the game last read the file: "registered, not loaded
---- by the game yet", "served: ..." or "NOT patched: <why>".
+--- by the game yet", "served: ...", "unchanged" or "NOT patched: <why>";
+--- with several mods each one's, as "owner: outcome; owner: outcome".
 ---@param path string
 ---@return string? status nil when no mod patches the file
 function files.Status(path) end
 
---- Who patches the file: a script's LUA_NAME or a DLL mod's owner name.
+--- Who patches the file first: a script's LUA_NAME or a DLL mod's owner name.
 ---@param path string
 ---@return string? owner nil when no mod patches the file
 function files.Owner(path) end
+
+--- Every mod patching the file, in the order their patches run.
+---@param path string
+---@return string[] owners empty when no mod patches the file
+function files.Owners(path) end
 
 --- Reads a game file as the game finds it: loose data\ first (so x2m and
 --- Revamp files count), then the .cpk archives. Read-only; other mods'
@@ -420,6 +429,80 @@ function files.ReadGameFile(path) end
 function files.IggyScriptStatus(path) end
 
 -- ===========================================================================
+-- uilib - several mods editing one menu (Lib\XV2UserInterfaceLib.dll)
+-- ===========================================================================
+-- Ship your whole edited copy of the menu's ActionScript (the AS3 ABC, e.g.
+-- from FFDec); the library merges only what you changed into the menu as
+-- the mods before you left it, so every mod's edits apply. Changed and new
+-- methods, traits, classes and scripts are applied, removals are not; a
+-- method an earlier mod also changed is merged when the edits don't
+-- overlap, otherwise yours wins (loader.log lists each). files.Status(path)
+-- shows the outcome. Texture files work the same way per image
+-- (uilib.SetImage), text files per entry (uilib.SetMessage). Dropped on F1 and made again as the script runs.
+-- nil without XV2UserInterfaceLib.dll.
+
+---@class uilib
+uilib = {}
+
+--- Registers your edit of the script of the .iggy menu at `path`.
+--- For a menu that comes in versions (the cpk's CHARASELE, XV2Patcher's
+--- loose one) call once per version, each with its gameFile: the script made
+--- from the menu the game loads is used (else the one without gameFile, else
+--- the first). The same gameFile again replaces that script.
+---@param path string the menu ("ui/iggy/CHARASELE.iggy")
+---@param abcFile string your whole edited ABC, relative to the mod folder
+---@param baseFile? string what you edited when it isn't the game's script byte for byte: with FFDec, the game's script with the same classes recompiled unchanged (ClaudeTools\iggy\ffdec_base.py)
+---@param gameFile? string the game script baseFile comes from, when the game may load another (e.g. XV2Patcher's menu); nil = the menu's own
+---@param order? integer lower runs earlier (default 0)
+---@return boolean registered
+---@return string? reason why it was refused
+function uilib.EditScript(path, abcFile, baseFile, gameFile, order) end
+
+--- Removes this script's edit of `path` (its script, or all its images or entries).
+---@param path string
+---@return boolean removed
+function uilib.Remove(path) end
+
+--- Replaces one image of a texture file, or adds it when the file has none
+--- by that name. Your other images of the file stay and other mods' images
+--- of it apply too (the same image from two mods: the later wins, noted in
+--- loader.log). files.Status(path) shows the outcome.
+---@param path string a .iggytex / .iggyted ("ui/iggy/CMNTITLE_en.iggytex") or .emb ("ui/texture/CHARA01.emb")
+---@param name string|integer iggytex/iggyted: the texture id (14, the id the .iggy uses); emb: the entry's name, or "#<index>" in an EMB without names ("#<count>" adds one)
+---@param imageFile string the image (a DDS for iggytex), relative to the mod folder
+---@param order? integer lower runs earlier (default 0); the file's first call sets it
+---@return boolean registered
+---@return string? reason why it was refused
+function uilib.SetImage(path, name, imageFile, order) end
+
+--- Drops one of this script's images of `path`.
+---@param path string
+---@param name string|integer
+---@return boolean removed
+---@return string? reason
+function uilib.RemoveImage(path, name) end
+
+--- Sets the text of one entry of a .msg file (its first line; other lines
+--- and the line's parameter count stay), or adds the entry when the file has
+--- none by that name. Your other entries of the file stay and other mods'
+--- entries of it apply too (the same entry from two mods: the later wins,
+--- noted in loader.log). One call per language file.
+---@param path string the text file ("msg/lobby_text_en.msg")
+---@param name string the entry's name ("name_4293"; the game looks text up by name)
+---@param text string plain UTF-8; ' " & < > are stored as the game's entities
+---@param order? integer lower runs earlier (default 0); the file's first call sets it
+---@return boolean registered
+---@return string? reason why it was refused
+function uilib.SetMessage(path, name, text, order) end
+
+--- Drops one of this script's entries of `path`.
+---@param path string
+---@param name string
+---@return boolean removed
+---@return string? reason
+function uilib.RemoveMessage(path, name) end
+
+-- ===========================================================================
 -- menus - a patched menu script talking to the script
 -- ===========================================================================
 -- A menu's ActionScript reaches the game with
@@ -432,7 +515,7 @@ function files.IggyScriptStatus(path) end
 -- m_callback.GetUserDataString(index). Messages are queued; read them each
 -- frame. An answer is written at the menu's next taken message, so the AS
 -- should keep sending one (e.g. every frame) while it waits. DBXV2.exe
--- 1.26.01 only. A script's hooks detach when the scripts reload (F1) and are
+-- 1.27 only. A script's hooks detach when the scripts reload (F1) and are
 -- made again as they run. Example: CharaSearch\chara_search.lua.
 
 ---@class menus
@@ -443,7 +526,7 @@ menus = {}
 ---@field value number|string
 
 --- Chains into vtable slot `slot` of the menu class whose vtable is at
---- `vtable` (an address in DBXV2.exe, relative to its base - e.g. 0x10be328
+--- `vtable` (an address in DBXV2.exe, relative to its base - e.g. 0x10cc558
 --- = SelectCharacter, slot 17 its user callback) and takes the sendTypes in
 --- `messages`: {[sendType] = "number" | "string"} (the value's kind).
 --- `mutex`: an optional named mutex other mods hooking the same slot also

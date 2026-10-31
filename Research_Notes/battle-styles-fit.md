@@ -200,7 +200,7 @@ character-BDM ids each BDM lacks; BAC/BDM may be files on disk):
   (`vfx/vfx_spec.ers`: chara/NMC/NMC.eepk; ZMG -> chara/ZMG/ZMG.eepk).
   NMC_PLAYER.bac, HUM_PLAYER.bac and both Turn Giant BACs use no
   character-EEPK effect. The reference mod redirects ERS (0x9563eb) and the
-  EEPK chara-id getter (0x121370) for this.
+  EEPK chara-id getter (0x121430) for this.
 
 ### Crash fix: keyframe alignment (2026-10-11, built, NOT yet seen in game)
 * User report: Cellin (CLN) and Videl (VDL) styles crash in battle; game a
@@ -217,9 +217,9 @@ character-BDM ids each BDM lacks; BAC/BDM may be files on disk):
 * Fix (`src\ean_fit.cpp`): each copied animation keeps its source offset
   mod 16. `ClaudeTools\battle_styles\eanalign.py EAN..` lists misaligned float
   tracks; offline VDL/CLN -> NMC now 0, ZBN.NMC.ean byte-identical to before.
-* Same session, separate crash (20:15, exe 0x9bba67, ~4 min in): first put
+* Same session, separate crash (20:15, exe 0x9c9907, ~4 min in): first put
   down to the URN style (Fortune Teller Baba, chara 205; its CMS EAN
-  "chara/URN/URN.ean" exists nowhere - still a battle-styles.md "Broken movesets" case). It
+  "chara/URN/URN.ean" exists nowhere - still a battle-styles-roster.md "Broken movesets" case). It
   was the SE bank merge instead, see battle-styles-sound-and-effects.md "Cue limit crash".
 
 ### Race-only BAC entries (Dual Ultimate rush) (2026-10-11, built, NOT yet seen in game)

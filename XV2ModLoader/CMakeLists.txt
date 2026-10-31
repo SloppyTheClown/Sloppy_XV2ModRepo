@@ -63,6 +63,20 @@ if (MSVC)
     target_link_options(XV2ModLoaderLib PRIVATE /DELAYLOAD:d3dcompiler_47.dll)
 endif()
 
+# The UI library (UILib/): parses and writes the game's UI files (.iggy and
+# its AS3 script, .iggytex/.iggyted, .emb) and merges several mods' changes
+# to one file. The formats are a static library shared by the DLL and the
+# offline checker xv2ui.exe (UILib/tool).
+file(GLOB UI_FORMAT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/UILib/src/formats/*.cpp)
+add_library(xv2ui_formats STATIC ${UI_FORMAT_SOURCES})
+add_executable(xv2ui UILib/tool/xv2ui.cpp)
+target_link_libraries(xv2ui PRIVATE xv2ui_formats)
+# XV2UserInterfaceLib.dll (Lib/): the merge as a stage of the loader's file
+# pipeline, for DLL mods (sdk/xv2_ui.h) and Lua ("uilib").
+add_library(XV2UserInterfaceLib SHARED UILib/src/ui_lib.cpp)
+target_include_directories(XV2UserInterfaceLib PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sdk ${CMAKE_CURRENT_SOURCE_DIR}/UILib/src)
+target_link_libraries(XV2UserInterfaceLib PRIVATE xv2ui_formats lua)
+
 # The two launchers, one source.
 add_executable(launch_modded   WIN32 src/launcher.cpp)
 add_executable(launch_unmodded WIN32 src/launcher.cpp)
@@ -73,7 +87,7 @@ set_target_properties(launch_unmodded PROPERTIES OUTPUT_NAME "Launch Unmodded")
 target_link_libraries(launch_unmodded PRIVATE shell32)
 
 if (MSVC)
-    foreach(t winmm XV2ModLoaderLib launch_modded launch_unmodded)
+    foreach(t winmm XV2ModLoaderLib xv2ui_formats xv2ui XV2UserInterfaceLib launch_modded launch_unmodded)
         target_compile_options(${t} PRIVATE /W4 /permissive-)
     endforeach()
 endif()

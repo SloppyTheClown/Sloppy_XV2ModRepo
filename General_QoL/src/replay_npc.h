@@ -9,7 +9,7 @@
 // settings it leaves out.
 struct ReplayNpc {
     bool enabled = true;
-    int  npcId = 1294;                     // Dastar's lobby NPC ID
+    int  npcId = 1315;                     // Dastar's lobby NPC ID (1.26: 1294)
     std::string npcNameKey = "name_4293";  // his name's key in lobby_text_*.msg
     std::string model = "STN";             // character code (CMS); STN = Hercule
     int  costume = 0;
@@ -45,3 +45,23 @@ NpcFile ClassifyNpcFile(const std::string& path);
 // and the MSG files change size.
 bool EditNpcFile(NpcFile kind, const ReplayNpc& npc, const uint8_t* src, size_t n, std::vector<uint8_t>& out,
                  std::string& note);
+
+// The texts the replay NPC sets in a LobbyText / MenuTitles msg file (entry
+// name -> UTF-8 text, unescaped); entries whose text is empty (= keep the
+// game's) are left out. Empty for other kinds.
+struct NpcMessage { std::string key, text; };
+std::vector<NpcMessage> NpcMessages(NpcFile kind, const ReplayNpc& npc);
+
+// Menu title art, CMNTITLE_<lang>.iggytex: texture 14 holds the big "Future
+// Saga" title. FindMenuTitleTexture reads where texture 14's DDS lies from
+// the file's first kMenuTitleHeadBytes (its texture table), so a caller can
+// read just that part; BlankMenuTitleArt returns that DDS with the title
+// blanked (false when the replay NPC keeps the game's title or the texture
+// isn't laid out as expected; `note` says which).
+const uint32_t kMenuTitleTexture = 14;
+const uint32_t kMenuTitleTextureCount = 14;
+const size_t kMenuTitleHeadBytes = 16 + kMenuTitleTextureCount * 16;
+bool FindMenuTitleTexture(const uint8_t* head, size_t headSize, uint64_t fileSize, uint32_t& offset, uint32_t& size,
+                          std::string& note);
+bool BlankMenuTitleArt(const ReplayNpc& npc, const uint8_t* dds, size_t size, std::vector<uint8_t>& out,
+                       std::string& note);

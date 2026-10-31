@@ -5,6 +5,10 @@ which texture numbering an .iggy uses, EMB image files, and how menu text is
 looked up. Context: General_QoL's replay-NPC menu title and the Revamp
 bridge's texture renumbering (revamp-on-1.26.md). Game 1.26.01.
 
+Moved to their own files (2026-10-22):
+* `ui-item-lists.md`: Item lists (Menu::ItemList)
+* `ui-menu-screens.md`: Lobby map (LOBYHUD.iggy, classes LobbyHUD / LobbyMap); Stat radar chart (CMN_CHART.iggy, class _CMN_CHART); Attributes screen: one script, two mods
+
 ## Menu titles
 * Headers: CMNTITLE.iggy (mc_menutitle). The big title is a picture picked by
   a number ("MainTitleType"); the line under it is text
@@ -15,8 +19,9 @@ bridge's texture renumbering (revamp-on-1.26.md). Game 1.26.01.
   in all 13 languages (gap rows 253/273 alpha <= 3). Texture 1 = header icons
   (time machine icon).
 * Iggy blends premultiplied: alpha 0 with the colour kept STILL SHOWS. Blank =
-  zero the whole 16-byte DXT5 block. General_QoL does that; not yet confirmed
-  in game - if the title still shows, the texture is not read through the
+  zero the whole 16-byte DXT5 block. General_QoL does that (since
+  2026-10-19 as a UI library image edit of texture 14, file hook as
+  fallback); not yet confirmed in game - if the title still shows, the texture is not read through the
   hooked request's vt+0x20 (the log does show cmntitle_en.iggytex edited, and
   memory held only the edited copy).
 * Other UI: QUEST.iggy = quest menu frames only; STORETITLE / CMNTITLE_TTL /
@@ -25,12 +30,18 @@ bridge's texture renumbering (revamp-on-1.26.md). Game 1.26.01.
   `XV2_RevampBridge\tools\ddspng.py`.
 
 ## Formats
-* .iggytex / .iggyted (same format): magic "oggytex\0", u32 count at 8, then
-  per texture {index, size|0x80000000, offset|0x80000000, 0} from 16, each a
-  DDS. Writer: header 16 + 16/texture, textures at 128-byte alignment, no
-  tail - reproduces vanilla byte for byte. An entry with size 0 / offset 0
-  references another file's texture; its high u16 names the file (0xFFFF =
-  held here). Match references by that, not by order.
+* .iggytex / .iggyted (same format): magic "oggytex\0", u32 count at 8, a
+  u32 at 12 (16 in every game file), then per texture {u16 id, u16 file,
+  u32 size, u32 offset, u32 0} from 16, each a DDS. Sizes/offsets are plain
+  values - they often end in 0x80 only because of the 128-byte alignment,
+  there is no flag bit. `file` is 0 for a held texture in every cpk
+  iggytex checked (3832 entries, 2026-10-19) - not 0xFFFF. The UI library
+  keeps a replaced texture's entry as it was and writes 0 for one it adds
+  (it wrote 0xFFFF until 2026-10-19 - then General_QoL's output differed
+  from its old whole-file edit at CMNTITLE 0xE2-0xE3; now identical).
+  Writer: header 16 + 16/texture, textures at 128-byte alignment, no tail -
+  reproduces vanilla byte for byte. Size 0 / offset 0 = a reference to
+  another file's texture. Match references by id, not by order.
 * A texture-only mod using BC7 (DX10 DDS, dxgiFormat 98) works on Windows
   but not under Proton: the game loads Iggy textures via d3dx11_43 and
   Wine's builtin cannot decode BC7 (Revamp's button icons). Fix and
@@ -79,6 +90,28 @@ bridge's texture renumbering (revamp-on-1.26.md). Game 1.26.01.
   `fd 0f 01 00 02`, `ff <rest>` to the index, fix subfile 1's size fields
   (0x24/0x28) and subfile 0's sizes and offset (0x34/0x38/0x3C). The old
   block stays as dead bytes.
+* Index byte code in full (disassembled iggy_w64.dll 0x59860..0x59bb1,
+  fields 0x590a0 / 0x592a0; checked over 194 game .iggy files + 58 iggytex/iggyted with
+  XV2UserInterfaceLib's `xv2ui roundtrip`: 0 failures, 24423 method bodies
+  re-encoded):
+  * Starts with a type table: u8 count, per type {u8 size, u8 field count,
+    (u8 offset, u8 kind) per field}.
+  * Commands: `00..7f` one struct of that type; `80..bf t` (op-0x7f) structs
+    of type t; `c0..cf` skip 2*(op-0xbf) bytes; `d0..df n` n+1 values of
+    kind (op & 15) (2 = 8-byte pointer, 4 = u16, 5 = u32, 6 = u64);
+    `fd size k (off kind)*k` one ad-hoc struct; `fe n` skip n+1; `ff u32`
+    skip u32; `fc x` nothing.
+  * Field kinds: 2 = self-relative u64 -> absolute pointer (1 = null);
+    4/5/6 endian swaps (no-ops on PC); 3 bit-reverse (other platforms);
+    8..11 = replaced by a runtime u64 (context[0][k-8]); 12..15 = runtime
+    byte (context[1][k-12]); 7 nothing. Game files use only 2, 8 and 12.
+  * Survey: 496,912 pointers (156,794 null), all targets inside the movie;
+    ops t 167k, c 56k, tn 23k, fe 7.3k, fd 802, ff 754, d2 191.
+  * Index subfiles are capped at ~16 KB: gasha (3), kokuzouko (2),
+    lobymenu_bg (3), result_je (2) have several id-0 subfiles after the
+    movie. Each is a complete stream (own type table) walking from movie
+    offset 0; chunks 2+ start with `ff <where the previous ended>`. The
+    last one ends at the movie size.
 * Dead end: appending the block WITHOUT the index commands crashed the game
   as the map loaded (iggy_w64.dll+0x16f0 reads [block+8] walking the AS3
   block chain; the unwalked block's +0 kept its raw 1 and was followed as
@@ -100,7 +133,7 @@ bridge's texture renumbering (revamp-on-1.26.md). Game 1.26.01.
   '\' and '/' alike when matching a path suffix.
 * AS user data beyond the vanilla count: the menu object's ctor sizes the
   user-data vector (OggyBase ctor 0x2c6e40(this, mode, count)); patch the
-  count where the menu's own ctor passes it (EditChara: byte 0x4f67d7,
+  count where the menu's own ctor passes it (EditChara: byte 0x4f72b7,
   battle-styles-ui.md "Equip screen UI").
 * Adding to a multi-mode menu (EditChara): first read the live mode
   (`ClaudeTools\battle_styles\editchara.py`) - AS lists and exe sub-objects
@@ -108,26 +141,110 @@ bridge's texture renumbering (revamp-on-1.26.md). Game 1.26.01.
   Fill new slots wherever the game fills its own (the push at menu
   start), not only on a request, or they start grey.
 
-## Lobby map (LOBYHUD.iggy, classes LobbyHUD / LobbyMap)
-* The exe sends lines through user-data slots ReceiveType_MapInfoStart+i:
-  `Event:id=<icon 1..22>,x=<%>,y=<%>`, `BArea:`, `BeaCon:`, `Start`, `End`,
-  `PageL`, `PageR`. LobbyHUD.parseMapInfo splits on `:` `,` `=` and
-  parseInt()s every value (a text value becomes NaN). x/y are percent of
-  point1..point2 on map_inact; icons are copies of `map_inact.icn_<id>`.
-* Exe side: 0x3e9890 walks the lobby NPC list (manager 0x15747c0) and calls
-  0x5767c0(map, [npc+0x1c], type [npc+0x34c], npc+0x2d0 position); type ->
-  icon id by jump table 0x577380 (2->1, 3->15, 4..9->2..7, 0x10->8, ...,
-  0x64/0x65 from npc flags 0x10/0x20 -> 9/10); [npc+0x1c] 2..12 -> fixed
-  map position slots (0x577500). The line is "Event:" + sprintf
-  "id=%d,x=%d,y=%d" appended with std::string::append (0x7a740) at 0x576904.
-* NPC object: +0x42 and +0x142 wide strings (0x4aa1d0(npc, 0/1)); the OPC
-  name plate prints +0x42 with %ls - it is the NPC's shown name (confirmed
-  on the map). Undiscovered mentors get no map line at all. Mentor icons: classes po_icn_sensei /
-  po_icn_sensei2 ("sensei" = mentor); which icon id they are was not
-  established (the iggy's display list was not decoded) - the AS3 tests
-  the class instead.
-* Legend text: lobby_hud_text LBY_HUD_02_000..016 (Instructor = 002,
-  Instructor Event = 006).
+## Several mods editing one menu script (XV2UserInterfaceLib merge)
+Before: each mod shipped a whole ABC, and mods that shared a menu shipped
+hand-combined copies, picking one at run time (Battle Styles + Chara
+Search on CHARASELE). Now `XV2ModLoader\UILib\src\formats\abc_merge.cpp`
+(`MergeScript`) applies each mod's edit in turn over the current script.
+The offline check is `xv2ui merge <game.iggy> [-base <mod base>] <mod.abc>... [-expect x.abc]`.
+* **Matching by name, never by index.** An edited ABC renumbers its
+  pools. Methods are compared as canonical text: operands resolved,
+  branches as instruction numbers, debug ops ignored.
+* **Private namespaces.** The game's are named "" and FFDec's
+  "action_script:CharaSele", so the canonical form ignores private
+  namespace names. Pair them via a trait both sides have.
+* **FFDec noise (found the hard way).** FFDec recompiles every method of
+  a class it touches (`iftrue` -> `not` + `iffalse`, extra `convert_i`,
+  methods renumbered: waitStart is method 7 in the game, 231 in Battle
+  Styles'). Against the game's script, every method of an FFDec-made mod
+  looks changed: 124 for Battle Styles, 10 false conflicts for Chara
+  Search.
+  * Fix: a **mod base**, the game's ABC with the same class recompiled
+    unchanged (`ClaudeTools\iggy\ffdec_base.py`).
+  * "Did the mod change it": mod vs mod base.
+  * "Did an earlier mod change it": current vs the game's script.
+  * With the mod base, Battle Styles shows 5 real method changes and 18
+    added traits.
+* **Trait ids of added traits.** The game's compiler numbers static
+  traits (slot ids 1..n; disp ids where a class has static methods) and
+  leaves instance traits at 0. A merge that left added consts at 0 among
+  numbered ones and kept two mods' own disp ids (both 3..) gave a blank
+  CHARASELE in game (2026-10-19, likely cause - fix not seen in game yet).
+  Now each added trait gets max+1 of its id space in that list (slots /
+  consts / classes / functions share one, methods / getters / setters the
+  other), 0 when the list numbers nothing. `xv2ui traits` prints the ids.
+* **Both changed one method.** diff3 per instruction (`diff3.cpp`; keys =
+  op + resolved operands, debug ops stripped).
+  * Branch targets are moved through the diff's position maps.
+  * The mod's new registers are shifted past the ones the earlier mod
+    added (getlocal0-3 / setlocal0-3 become getlocal / setlocal).
+  * Two pure inserts at one place keep both, the earlier first.
+  * It gives up (the later mod wins, reported as a conflict) on: a changed
+    signature, try blocks, activation traits, or dead-code raw targets.
+* **Result.** Battle Styles then Chara Search on CHARASELE: 0 conflicts
+  (static init and changeCurrentPlayer merged at instruction level),
+  "same semantics" as the hand-combined `kCharaSeleSearchAbc`. Reverse
+  order: only the static init's constant order differs.
+  * `-expect` with an FFDec-made expected file counts "FFDec form there,
+    game form here" as the same (`CompareScripts` game + base).
+* **XV2Patcher's CHARASELE** (xv2ins 4.7's loose `data\ui\iggy\CHARASELE.iggy`,
+  267589 bytes, ABC 0xba46 / 0xaa2bcacb32cbd1fb; the cpk's is 0xb52d /
+  0x18865d7ce449251c): merging over it needs the patcher's own FFDec base
+  (`ffdec_base.py` over the patcher's ABC), not the vanilla one. Battle
+  Styles then Chara Search: 0 conflicts, "same semantics" as the old
+  `kCharaSelePatcherSearchAbc`; reverse order: static init constant order
+  only (2026-10-19, `ClaudeTools\uilib_test`).
+* **Menu versions.** One edit can't cover both CHARASELEs, so a mod
+  registers one script per version, each with its `game` (the ABC it was
+  built over): the library keeps them per owner + path (`ScriptEdit
+  ::variants`) and the stage uses the one whose `game` equals the menu's
+  original script byte for byte; else one registered without `game`; else
+  the first, merged over its own `game` (status says "made for another
+  version of the menu"). The same owner + `game` again replaces that one.
+  `menu_abc.py` writes all three per version for the CHARASELE menus
+  (`UILIB_MENUS`): Lua mods get `<name>.abc`, `<name>_base.abc`,
+  `<name>_game.abc`; DLL headers `k<prefix>Abc/BaseAbc/GameAbc`.
+* **In game: the loader's file pipeline.** `XV2UserInterfaceLib.dll`
+  (`UILib\src\ui_lib.cpp`) registers each mod's edit as an
+  `XV2Files_AddStage` stage (`Lib\src\file_patches.cpp`): on every read of
+  the menu, stage N gets the .iggy as stages 0..N-1 left it plus the
+  game's original, takes the script out, `MergeScript(game, current, mod,
+  modBase)`, puts it back (`IggyDocument::SetScript` + `Write`). The
+  3-way "game" is the original's script unless the mod passes the one it
+  built from (needed when the original isn't vanilla, e.g. XV2Patcher's
+  CHARASELE: otherwise the patcher's edits count as "the game" and a
+  method the mod also changed silently loses them). Results are cached per
+  input (hash, size), so a menu that reopens is not merged again. Offline
+  equivalent: `xv2ui merge ... -o out.iggy` (round-trips). Menus confirmed
+  working in game (user, 2026-10-18). First users (2026-10-19, not seen in
+  game): Battle Styles (`XV2UI_EditScript`, owner "BattleStyles") and Chara
+  Search (`uilib.EditScript`, "CharaSearch") on CHARASELE, replacing the
+  hand-combined scripts. A DLL that needs to know whether its edit reached
+  the menu reads `XV2Files_Status`: "served: ..." with one stage (then
+  `XV2Files_Owner` says whose), "owner: served: ...; owner: ..." with several.
+
+## Several mods editing one texture file (XV2UserInterfaceLib images)
+* Texture files go per image, not per file: a mod registers the images it
+  replaces or adds (`XV2UI_SetImage`, Lua `uilib.SetImage`); its stage
+  (`UILib\src\formats\image_edit.cpp ApplyImages`) parses the current
+  .iggytex/.iggyted/.emb, swaps or appends only those, writes it back with
+  the formats' writers (byte-identical round-trip, textures 128-aligned,
+  EMB files 64-aligned). Mods touching different images all apply; the same
+  image from two mods: the later wins, noted in loader.log ("changed by an
+  earlier mod" = current differs from the game's original there).
+* Names: iggytex = the texture id the .iggy uses (low u16; the entry is
+  written with file 0, so a reference to another file's texture turns
+  into one held here); EMB = entry name, "#n" for EMBs without a name table
+  (every ui\texture and ui\sprite EMB checked so far has names).
+* Offline: `xv2ui images <game file> name=img... [-then ...] -o out`;
+  `ClaudeTools\uilib_test\images\run.bat` stacks two mods on CMNTITLE_en,
+  apl.emb and advertise.emb (names dropped) and checks every untouched
+  image stays the game's. Built 2026-10-19, not seen in game (no user yet).
+* First user: General_QoL's "Future Saga" blanking (texture 14 of every
+  CMNTITLE_<lang>, built from the game's texture at start; its
+  `tests\run.bat` "titles" compares with `xv2ui images`).
+* Not covered: two mods editing different regions of one texture (e.g.
+  title bands inside texture 14) - that needs a DDS block-level merge.
 
 ## msg text
 * data\msg\*.msg: UTF-16 entries; the game looks text up by entry NAME, not id
@@ -137,109 +254,13 @@ bridge's texture renumbering (revamp-on-1.26.md). Game 1.26.01.
   "%ls"/"%d" as is. Keep it when rewriting a file (see revamp-on-1.26.md).
 * Compare msg files with `XV2_RevampBridge\tools\msgdiff.py` (an ASCII token
   check misses them - names are mostly UTF-16).
-
-## Item lists (Menu::ItemList)
-Equipment lists (torso ... Super Soul), shops: one Menu::ItemList object,
-vtable 0x10aa508; slot 9 = per-frame update 0x5417e0 (rcx = list). It keeps
-ticking while hidden (Customize screen: state 1, 0 entries), so a list stays
-"active" for the whole equipment screen. Used by ItemSearch; probe:
-`ClaudeTools\itemlist_probe.py`.
-* Fields: +0x1f0 mode (15 = equipment, also for Super Souls), +0x1f4 state
-  (2 = open and idle, 1 = hidden), +0x1f8/+0x200 all entries, +0x210/+0x218/
-  +0x220 shown entries (begin/end/capacity), +0x228 category, +0x22c sub,
-  +0x234 cursor (entry index), +0x23c top visible entry (written by the page
-  pusher), +0x2f4 rows-changed flag, +0x318 preview owner (EditChara) or 0,
-  +0x528/+0x52c sort (cmd 12 at 0x544805 cycles +0x52c).
-* Entries: 0xb0-byte POD (push_back 0x544190 copies with movups), +0 type,
-  +4 id (-1 = "None").
-* Functions: 0x543090(list, wstring* out, shownIndex) row name as shown;
-  0x542640(list) shown = all filtered by category + sorted (no reload);
-  0x546730(list, 0) reloads the all array from the inventory (and rebuilds);
-  0x545340(list, topRow) sends the visible rows to Iggy; 0x545980(list) row
-  icons (Iggy int variables 0x3f..0x49); 0x2c81a0(menu, variable, int) sets
-  one Iggy int variable (6 = selected entry, 7 = selected row on screen,
-  from the cursor move at 0x5447a8); 0x541370(list) character preview.
-* Command handler 0x544220 (Iggy -> game, jump table 0x544860): cmd 1 =
-  category change (0x54426f: rebuild, 0x5465e0 find page, push page,
-  cursor). That path does NOT reset Iggy's selected entry/row (the Iggy
-  side started the change). Refreshing an open list from the game side has
-  to do what the sort refresh 0x542580 does: variables 6 and 7 = 0, icons,
-  push page 0, variable 2 = 0, cursor 0, (modes 9/10: 0x5452d0 + 0x5410c0),
-  preview, +0x2f4 = 1. With only the category-path tail the rows did not
-  change on screen, and a shortened list with Iggy's selection past its end
-  is the likely cause of the menu ignoring input after a search (seen in game;
-  the fix is not confirmed yet).
-* **Calling that sequence from Lua does not redraw the rows** (seen in game:
-  the preview changed - cursor 0 = "None", the CaC showed naked - but the
-  rows stayed). ITEMLIST.iggy's script (action_script.ItemList) is
-  pull-based: rows are only redrawn by its own requestList flow (requestList
-  -> waitOutList -> sends RequestList/SelectIndex/ListPosition ->
-  waitSetupList/checkSetupList -> changeListPage/initList -> waitShowList,
-  which adds checkKey + updateNewFlagNotify). The game's sort path works only
-  because the script started it.
-  * Game -> script int variables (ReceiveType_*): 0 ModeType, 1 RequestEnd,
-    2 RequestResume, 3 Zeny, 4 ListType, 5 ListElemMax, 6 ListSelectList,
-    7 ListButtonStart, 8 ListNameStart... Script -> game (SendType_*): 0
-    RequestList, 1 RequestSort, 4 SelectIndex, 6 DecideIndex, 11
-    ListPosition, 12 PauseList. Setters 0x2c81a0/0x2c81f0/0x2c8240 (int /
-    float / string) store the value, valid flag = 1, menu +0x54 dirty.
-  * Game-side refresh after a reload: 0x5488b9 (reload 0x546730, rebuild,
-    clamp cursor/top, variables 6/7, push page, preview) - also no variable
-    2, so it relies on the script asking too.
-  * The fix (ItemSearch): a patched ItemList script
-    (`ItemSearch\as3\ItemList.as`, built by `ClaudeTools\iggy\itemlist_abc.py`,
-    shipped as `ItemList.abc`; item_search.lua has the loader swap it into
-    the game's own ITEMLIST.iggy as it loads - `files.ReplaceIggyScript`,
-    vanilla ABC 59410 bytes / FNV-1a 64 0x8dd6dfe18ce480c6; older versions
-    installed a loose `data\ui\iggy\ITEMLIST.iggy`). checkSearchRefresh,
-    called first in updateNewFlagNotify (every idle frame, not while paused):
-    when variable 2 is valid and holds 0x5EA0000 | entry, it clears the flag,
-    SetItemNum(variable 5), SelectList(entry, -1), sets
-    m_restore_pos_change_page_init_list and calls requestList; the game then
-    answers as for any page change. The Lua side only shortens the shown
-    array and writes variables 5 and 2 (entry = where the previously
-    highlighted item now is, else 0).
-  * FFDec roundtrip of this script: pcode_flow flags initListBase,
-    waitResumeList, selectMixMaterial, changeRecipeMaterial, isCancelExit;
-    all equivalent encodings (`iftrue` -> `not; iffalse`, `equals; iffalse`
-    -> `ifne`, `decrement` -> `pushbyte 1; subtract`, a switch's default
-    pushed as -1 instead of an extra case). No source fixes needed.
-  * Live redraw confirmed in game. Never refresh while the game handles a
-    key: a forced refresh on the Enter that also reached the game (decide)
-    left Customize stuck - EditChara (vtable 0x10a0098) +0x2f8 = 0xce (a
-    list open; 0x192 = none) while the ItemList was hidden (+0x1f4 = 1), no
-    input worked (probe: `ClaudeTools\battle_styles\editchara.py`). Item Search now
-    refreshes only when the query changes.
-  * **Favorites (2026-10):** star (the game font has ★), F / L3 toggle,
-    persistence, search and favorites-first seen in game. The refresh tag:
-    `0x5E000000 | favoriteCount << 14 | 0x2000 (they follow one leading
-    row, "None") | entry` (mask 0x7F000000 for the tag, count bits 14-23 up
-    to 0x3FF, bit 13 the offset, entry bits 0-12 up to 0x1FFF; the old
-    0x5EA0000 form is gone). The script keeps `m_favorite_first` /
-    `m_favorite_count` (count reset in startList and before a sort request)
-    and changeListPage appends a gold `<font color="#FFC800">★</font>` to
-    rows in that range (SetButton's name is htmlText). The Lua side orders
-    the shown array None, matching favorites (by "type:id", whole 0xb0
-    entries, game order), the rest. Per Steam account in
-    `mods\ItemSearch\favorites.sav` (account from the save image,
-    battle-styles-loading-and-online.md "Saves"). Toggle: F (no Ctrl) or the left stick click
-    (the loader's `isPadButtonPressed(PAD_LEFT_THUMB)`, XInput through the
-    game's own xinput DLL), Customize modes only, list idle: first 15 (equipment, Super Souls); the
-    skill lists searched but F/L3 did nothing (seen in game 2026-10-10), so
-    now 14-16 (the script's ModeType_CustomizeItem/Skill/Costume) - the
-    skill lists' own mode value not probed; confirmed in game. Offline
-    check: `ClaudeTools\itemsearch\run.bat`.
-  * **Bug seen in game: stars only on a list's first opening, and moving
-    from a favorite jumped to the item's natural place.** endList does not
-    remove updateNewFlagNotify, so the closed list's script kept running
-    checkSearchRefresh and took the tag meant for the next opening; startList
-    then reset the count, and waitSetupList put the game's cursor (variable
-    6, the item's natural index) into ListBox.m_select_list, which
-    SelectNext/SelectPrev move from. Also the equipment screen's ItemList
-    keeps ticking while hidden (+0x1f4 = 1), so the Lua side saw no new list
-    and sent nothing when the game kept the arranged array. Fix (not seen in
-    game yet): `m_search_ready`, true only while checkKey listens (set at its
-    two addEventListener sites, cleared at every removal: endList,
-    requestList, decideList, pauseList, finalize), gates checkSearchRefresh;
-    Lua sends the tag again after the list was hidden (state 1 -> 2) and
-    always writes the cursor +0x234 = the tag's entry.
+* Layout (Xv2CoreLib's MSG_File, checked on all 7315 cpk .msg by
+  `xv2ui roundtrip`, byte-identical): "#MSG"; u16@4 = 256 -> UTF-16 names,
+  u16@6 = 1 -> UTF-16 text; u32 count@8, names@12 (16-byte {offset, length,
+  size, unknown}), ids@16 (u32), line lists@20 (8-byte {count, offset}),
+  total lines@24, line records@28 (16-byte {offset, length, size,
+  parameters}); then all names, then all texts, 0-terminated. A file with
+  no entries (41 in the cpks, e.g. qx_target01_*) has every offset 0.
+  Reader/writer: `XV2ModLoader\UILib\src\formats\msg_file.cpp`.
+* Several mods editing one msg: XV2UserInterfaceLib message edits
+  (`SetMessage`, per entry; `XV2ModLoader\NEXT_STEPS.md` "Message edits").

@@ -12,12 +12,17 @@
 //                     -> movzx ecx, byte ptr [rax+1]   0F B6 48 01
 //
 //  (same RVA in game 1.25.02 and 1.26.01; Research_Notes\effects-and-vfx.md).
+//  Off unless "raise_limit": true in the config: LB Mod Installer, EEPK
+//  Organiser and other tools treat a file with more than 128 textures as
+//  corrupt, so the usual fix is to merge textures (EEPK Organiser's
+//  Optimize Textures) and stay under 128.
 //  255 still means "no texture": the bounds check skips it while the file
 //  has fewer than 256 textures. Trace effects (trc.emb) already read the
 //  index unsigned. Files with <= 128 textures behave exactly as before.
 //
-//  Reads only effect_texture_limit.json's "logging" next to the DLL; writes
-//  EffectTextureLimit.log only when that is true. No network calls.
+//  Reads only effect_texture_limit.json's "raise_limit" and "logging" next to
+//  the DLL; writes EffectTextureLimit.log only when "logging" is true. No
+//  network calls.
 // ---------------------------------------------------------------------------
 #include <windows.h>
 #include "default_config.h"
@@ -33,19 +38,33 @@ constexpr unsigned char kUnsigned[] = { 0x0F, 0xB6, 0x48, 0x01 };     // patched
 
 std::wstring g_modDir;
 bool g_logging = false;
+bool g_raiseLimit = false;   // "raise_limit"; off by default (see the header)
 
 void Log(const char *message)
 {
     if (!g_logging) return;
     FILE *file = nullptr;
-    if (_wfopen_s(&file, (g_modDir + L"EffectTextureLimit.log").c_str(), L"a, ccs=UTF-8") != 0 || !file) return;
+    // One session per log: the first write of a run moves the last run's log to <name>.prev.log.
+    static volatile LONG rotated = 0;
+    std::wstring path = g_modDir + L"EffectTextureLimit.log";
+    if (!InterlockedExchange(&rotated, 1)) MoveFileExW(path.c_str(), (g_modDir + L"EffectTextureLimit.prev.log").c_str(), MOVEFILE_REPLACE_EXISTING);
+    if (_wfopen_s(&file, path.c_str(), L"a, ccs=UTF-8") != 0 || !file) return;
     SYSTEMTIME now;
     GetLocalTime(&now);
     fwprintf(file, L"%02d:%02d:%02d %hs\n", now.wHour, now.wMinute, now.wSecond, message);
     fclose(file);
 }
 
-// "logging": true in the config; a missing config is written from the default.
+// True when the config text has "<key>": true; a missing key is false.
+bool ReadBool(const char *text, const char *key)
+{
+    const char *found = strstr(text, key);
+    if (!found) return false;
+    const char *value = strchr(found, ':');
+    return value && strncmp(value + 1 + strspn(value + 1, " \t\r\n"), "true", 4) == 0;
+}
+
+// Reads "raise_limit" and "logging"; a missing config is written from the default.
 void ReadConfig()
 {
     std::wstring path = g_modDir + L"effect_texture_limit.json";
@@ -60,11 +79,8 @@ void ReadConfig()
     char text[4096] = {};
     fread(text, 1, sizeof(text) - 1, file);
     fclose(file);
-    const char *key = strstr(text, "\"logging\"");
-    if (key) {
-        const char *value = strchr(key, ':');
-        g_logging = value && strncmp(value + 1 + strspn(value + 1, " \t\r\n"), "true", 4) == 0;
-    }
+    g_raiseLimit = ReadBool(text, "\"raise_limit\"");
+    g_logging = ReadBool(text, "\"logging\"");
 }
 
 // Patches the bind loop's EmbIndex read; xgcore is not DRM-encrypted, so the
@@ -99,7 +115,8 @@ DWORD WINAPI Start(LPVOID)
 {
     ReadConfig();
     Log("---- Effect Texture Limit v" MOD_VERSION " starting");
-    Patch();
+    if (g_raiseLimit) Patch();
+    else Log("\"raise_limit\" is false - limit stays 128, nothing patched");
     return 0;
 }
 

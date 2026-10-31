@@ -1,11 +1,13 @@
 # Battle Styles
 
+**Version 1.1.0** · for Dragon Ball Xenoverse 2 **1.27** · needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
+
 Equipable movesets for created characters in Dragon Ball Xenoverse 2. A
 "Battle Style" changes a CaC's basic moves (attack strings, throw, guard,
 dashes, idle stance and their camera) to those of a roster character. Skills,
 supers and ultimates stay as they are.
 
-Game version 1.26.01. Needs [XV2 Mod Loader](../XV2ModLoader).
+Game version 1.27. Needs [XV2 Mod Loader](../XV2ModLoader).
 
 ## Installing
 
@@ -29,8 +31,8 @@ styles) and the game's `data\battle_styles` folder.
 
 ## Using it
 
-* **Equipping:** Customize -> equipment tab has a **Battle Style** button
-  under Super Soul. It opens a list of styles, sorted by name with the race
+* **Equipping:** Customize -> Skills has a **Battle Style** button
+  under the skills. It opens a list of styles, sorted by name with the race
   movesets ("Human M Default", ...) at the end; pick one, or **Default** for
   the character's own moveset. By default it lists the characters you have
   unlocked in the character select (setting `styles`).

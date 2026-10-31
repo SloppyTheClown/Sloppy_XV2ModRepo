@@ -12,19 +12,20 @@ static const NpcRanges kStoryNpcs = {
     {208, 273},    // expert mission rifts (lobby objects; later ones wait for earlier expert missions)
     {976, 976},    // Multiplayer Modes
     {982, 982},    // Voter Reception
-    {1007, 1046},  // Festival of Universes lobby desks (not 1006, its entrance)
-    {1309, 1309},  // Polisher (All-Star Battle)
+    {1007, 1045},  // Festival of Universes lobby desks (not 1006, its entrance)
+    {1049, 1049},  // Cross Versus Guide (1.27 put 3 new NPCs at 1046-1048: left alone)
+    {1330, 1330},  // Polisher (All-Star Battle)
 };
 // Not here: the tutorial and story NPCs (Trunks, Elder Kai, Supreme Kai...),
 // the DLC story receptions (Spots 85, Culina 86, Waipa 87, 981), whose
 // triggers pick the next story step, and the ones with DLC flags (Brashy 987,
-// Dastar 1294).
+// Dastar 1315).
 
 // The parallel quest tutorial (TMQ_1400) requirement: always true.
 static const char kPqTutorialDone[] = "QUEST(TMQ,STATE,TMQ_1400)==3";
 static const char kAlwaysPqTutorial[] = "            AVATAR(LEVEL)>=1";
 static_assert(sizeof(kPqTutorialDone) == sizeof(kAlwaysPqTutorial), "same length");
-static const NpcRanges kPqTutorialNpcs = {{976, 976}, {1046, 1046}};  // Multiplayer Modes, Cross Versus Guide
+static const NpcRanges kPqTutorialNpcs = {{976, 976}, {1049, 1049}};  // Multiplayer Modes, Cross Versus Guide
 
 // "Locked" triggers that fire while the prologue is not cleared: never true.
 static const char kPrologueLocked[] = "QUEST(TPQ,STATE,CTP_00_01)!=3";

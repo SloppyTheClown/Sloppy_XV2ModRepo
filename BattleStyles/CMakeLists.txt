@@ -20,7 +20,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/generated)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../XV2ModLoader/sdk)  # xv2_search.h: the loader's search box
 
 # Loaded by XV2 Mod Loader from <game>\XV2ModLoader\mods\BattleStyles\.
-add_library(BattleStyles SHARED src/dllmain.cpp src/mod.cpp src/json.cpp src/ean_fit.cpp src/prop_fit.cpp src/acb_merge.cpp src/game_files.cpp src/iggy_abc.cpp src/style_menu.cpp)
+add_library(BattleStyles SHARED src/dllmain.cpp src/mod.cpp src/json.cpp src/ean_fit.cpp src/prop_fit.cpp src/acb_merge.cpp src/game_files.cpp src/style_menu.cpp)
 set_target_properties(BattleStyles PROPERTIES PREFIX "")
 
 if (MSVC)

@@ -111,15 +111,15 @@ turns NULL into ""), empty EMM/EMB default to the EMD name. xv2ins swaps
     parts differ: the wig's Hair part has 0x4 with UNIF + `.dyt.emb`.
 * **What the exe does with the flags** (1.26.01, static disassembly of the
   running decrypted image via `ClaudeTools\exe\dump_running.py`, 2026-10-11):
-  * `0x29ae30` loads one physics object: LOD = `0x29ef60(race)` (0 if
+  * `0x29aef0` loads one physics object: LOD = `0x29ef60(race)` (0 if
     flags & 4); dyt name = EMD name (EMB name if flags & 2) + `.dyt.emb`;
     its own dyt is loaded **only if the 5th argument (an external dyt) is
     null**, otherwise that one is stored at +0x210.
   * `0x29c070` = regular part loader (call at 0x29c6c8): skips objects with
     flags & 4; with flags & 1 passes the part's dyt (rdi+0xd0) as the
     external one; runs only for a part that has a model.
-  * `0x6588a0` = accessory loader (calls 0x658b8f / 0x658d03): loads **only**
-    flags & 4 objects; external dyt = the part object `0x29d1e0(part index)`
+  * `0x65c6c0` = accessory loader (calls 0x65c9af / 0x65cb23): loads **only**
+    flags & 4 objects; external dyt = the part object `0x29d2a0(part index)`
     vtable +0x30 = the CaC's **face** dyt; no part object -> skipped.
   * So on an accessory part set without a model, only 0x4 loads at all, and
     a TOON_UNIF_* shader then reads the face's ramps (washed out). The

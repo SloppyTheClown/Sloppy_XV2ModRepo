@@ -29,6 +29,13 @@ void Log(const char* fmt, ...)
     if (!g_cfg.logging) return;
     wchar_t path[MAX_PATH];
     swprintf_s(path, L"%s\\savesync.log", g_dir);
+    // One session per log: the first write of a run moves the last run's log to <name>.prev.log.
+    static volatile LONG rotated = 0;
+    if (!InterlockedExchange(&rotated, 1)) {
+        wchar_t previous[MAX_PATH];
+        swprintf_s(previous, L"%s\\savesync.prev.log", g_dir);
+        MoveFileExW(path, previous, MOVEFILE_REPLACE_EXISTING);
+    }
     FILE* f = nullptr;
     if (_wfopen_s(&f, path, L"a") || !f) return;
     SYSTEMTIME st; GetLocalTime(&st);
@@ -81,14 +88,14 @@ static void LoadConfig()
 }
 
 // ------------------------------------------------------------ game code ---
-// DBXV2.exe 1.26.01, from its PE header (readable before Steam's DRM has
+// DBXV2.exe 1.27, from its PE header (readable before Steam's DRM has
 // decrypted the code).
-static bool IsGame12601()
+static bool IsSupportedGame()
 {
     const uint8_t* image = (const uint8_t*)g_base;
     uint32_t pe = *(const uint32_t*)(image + 0x3C);
-    return *(const uint32_t*)(image + pe + 8) == 0x6A63732E &&        // TimeDateStamp
-           *(const uint32_t*)(image + pe + 24 + 56) == 0x1A1F000;     // SizeOfImage
+    return *(const uint32_t*)(image + pe + 8) == 0x6AAA4CB1 &&        // TimeDateStamp
+           *(const uint32_t*)(image + pe + 24 + 56) == 0x1A33000;     // SizeOfImage
 }
 
 // Executable memory within +/-2GB of `target`, for a 5-byte relative jmp.
@@ -160,7 +167,7 @@ static DWORD WINAPI ThreadMain(LPVOID)
 
     bool known = false;
     for (int i = 0; i < 2000 && !known; ++i) {
-        known = IsGame12601();
+        known = IsSupportedGame();
         if (!known) Sleep(5);
     }
     if (!known) { Log("unknown game version - nothing is changed"); return 0; }

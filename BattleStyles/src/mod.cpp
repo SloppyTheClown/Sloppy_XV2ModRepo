@@ -6,7 +6,7 @@
 //  roster character named in the config ("test_style": its 3-letter CMS
 //  code, e.g. "GOK"). Skills are untouched: they live in their own files.
 //
-//  How: the game asks one function, the CMS path getter (0x2c5510), for every
+//  How: the game asks one function, the CMS path getter (0x2c5610), for every
 //  character file path ("chara/HUM/HUM.ean", "chara/HUM/HUM_PLAYER.bac", ...).
 //  For a CaC and one of the moveset fields it is asked again with the style
 //  character's id instead.
@@ -90,6 +90,13 @@ void Log(const char* fmt, ...)
     if (!g_cfg.logging) return;
     wchar_t path[MAX_PATH];
     swprintf_s(path, L"%s\\battle_styles.log", g_dir);
+    // One session per log: the first write of a run moves the last run's log to <name>.prev.log.
+    static volatile LONG rotated = 0;
+    if (!InterlockedExchange(&rotated, 1)) {
+        wchar_t previous[MAX_PATH];
+        swprintf_s(previous, L"%s\\battle_styles.prev.log", g_dir);
+        MoveFileExW(path, previous, MOVEFILE_REPLACE_EXISTING);
+    }
     FILE* f = nullptr;
     if (_wfopen_s(&f, path, L"a") || !f) return;
     SYSTEMTIME st; GetLocalTime(&st);
@@ -185,14 +192,14 @@ static void LoadConfig()
 // ------------------------------------------------------------ game code ---
 uintptr_t g_base = 0;
 
-// DBXV2.exe 1.26.01, from its PE header (readable before Steam's DRM has
+// DBXV2.exe 1.27, from its PE header (readable before Steam's DRM has
 // decrypted the code).
-static bool IsGame12601()
+static bool IsSupportedGame()
 {
     const uint8_t* image = (const uint8_t*)g_base;
     uint32_t pe = *(const uint32_t*)(image + 0x3C);
-    return *(const uint32_t*)(image + pe + 8) == 0x6A63732E &&        // TimeDateStamp
-           *(const uint32_t*)(image + pe + 24 + 56) == 0x1A1F000;     // SizeOfImage
+    return *(const uint32_t*)(image + pe + 8) == 0x6AAA4CB1 &&        // TimeDateStamp
+           *(const uint32_t*)(image + pe + 24 + 56) == 0x1A33000;     // SizeOfImage
 }
 
 // Executable memory within +/-2GB of `target`, for a 5-byte relative jmp.
@@ -265,14 +272,14 @@ bool WaitForCode(uintptr_t rva, const uint8_t* expected, size_t size)
 // ------------------------------------------------------- CMS path getter ---
 // char* GetCmsPath(cms, charaId, field, out[0x80]): finds the CMS entry with
 // that id and writes "chara/<dir>/<name>[_PLAYER].<ext>" into out, or returns
-// null. Its only caller, 0x2c54b0, prepends "data/" (12 callers from
+// null. Its only caller, 0x2c55b0, prepends "data/" (12 callers from
 // character loading, lobby and menus).
-static const uintptr_t kGetCmsPath = 0x2c5510;
+static const uintptr_t kGetCmsPath = 0x2c5610;
 // push rbx; push rbp; push rsi; push rdi; sub rsp, 0xd8 - the hook takes the
-// first 5 bytes (the four pushes; 0x2c5510 is 8-byte aligned).
+// first 5 bytes (the four pushes; 0x2c5610 is 8-byte aligned).
 static const uint8_t kGetCmsPathCode[] = {0x40, 0x53, 0x55, 0x56, 0x57, 0x48, 0x81, 0xEC, 0xD8, 0x00, 0x00, 0x00};
 
-// CMS file layout (Xv2CoreLib CMS/Parser.cs; walked the same way at 0x2c553e):
+// CMS file layout (Xv2CoreLib CMS/Parser.cs; walked the same way at 0x2c563e):
 // entry count at +8, offset of the entry table at +0xc, 0x54 bytes per entry
 // with the chara id at +0 and the 3-letter code at +4.
 static const size_t kCmsCount = 8, kCmsTable = 0xc, kCmsEntrySize = 0x54, kCmsCode = 4;
@@ -288,7 +295,7 @@ static int FindCharaId(const uint8_t* cms, const std::string& code)
 {
     int32_t count = *(const int32_t*)(cms + kCmsCount);
     uint32_t table = *(const uint32_t*)(cms + kCmsTable);
-    if (count <= 0 || table < 0x10) return -1;  // same sanity check as the game (0x2c554e)
+    if (count <= 0 || table < 0x10) return -1;  // same sanity check as the game (0x2c564e)
     const uint8_t* entry = cms + table;
     for (int32_t i = 0; i < count; ++i, entry += kCmsEntrySize)
         if (_strnicmp((const char*)entry + kCmsCode, code.c_str(), 4) == 0) return *(const int32_t*)entry;
@@ -329,7 +336,7 @@ static const int kEanField = 1;
 static const int kCamEanField = 6;
 static const int kBacField = 7;
 static const int kBdmField = 12;
-static const size_t kPathBuffer = 0x80;  // GetCmsPath's out: 0x2c54b0's stack buffer [rsp+0x20, rsp+0xa0)
+static const size_t kPathBuffer = 0x80;  // GetCmsPath's out: 0x2c55b0's stack buffer [rsp+0x20, rsp+0xa0)
 // Fitted copies, relative to <game>\data. A path of their own is required:
 // the game loads a file once per path and shares it between characters, and
 // resolves "..", so "chara/FRI/../GOK/GOK.ean" became plain GOK.ean (log,
@@ -486,7 +493,7 @@ static FittedFile FitBdm(void* cms, int charaId, int styleId, const std::string&
 // is "data/sound/" + path + ".acb", and a path of our own keeps the shared
 // race bank untouched for other characters.
 static const char kCsoPath[] = "system/chara_sound.cso";
-static const char kCharaSeFolder[] = "SE/Battle/Chara/";  // under data/sound, as 0x298c70 builds it
+static const char kCharaSeFolder[] = "SE/Battle/Chara/";  // under data/sound, as 0x298d30 builds it
 static const char kFitSeFolder[] = "SE/Battle/Chara/BattleStyles/";
 // Set once the bank load is redirected (HkLoadCharaSe): without it the game
 // loads the race bank, which lacks the merged cue ids, so sounds are dropped.
@@ -600,24 +607,24 @@ static void UseFitted(char* path, void* cms, int charaId, int styleId, int field
 
 // ------------------------------------------------- battle player loader ---
 // void LoadBattlePlayer(loader, playerIndex 0..13, setup): loads one battle
-// player's character (fn 0x16bfa0, only caller 0x169ede). Every moveset file
-// of that player is asked for inside it, on the same thread: 0x113d40 (EAN
-// field 1, then fields 6/7/8/9/12 in the loop at 0x1144d0) is called from it
-// directly (0x16c484) and through 0x16c530 (0x16c7b3).
-static const uintptr_t kLoadBattlePlayer = 0x16bfa0;
+// player's character (fn 0x16c060, only caller 0x169f9e). Every moveset file
+// of that player is asked for inside it, on the same thread: 0x113e00 (EAN
+// field 1, then fields 6/7/8/9/12 in the loop at 0x114590) is called from it
+// directly (0x16c544) and through 0x16c5f0 (0x16c873).
+static const uintptr_t kLoadBattlePlayer = 0x16c060;
 // mov rax, rsp; mov [rax+0x10], edx; mov [rax+8], rcx. The first 6 bytes go
 // to the hook's trampoline: no rip-relative operands, nothing jumps into them.
 static const uint8_t kLoadBattlePlayerCode[] = {0x48, 0x8B, 0xC4, 0x89, 0x50, 0x10, 0x48, 0x89, 0x48, 0x08};
 
 // The loader's per-player entries start at loader + 0xe0, 0x1f0 bytes each
-// (0x16bfcc). They are the battle setup list's player records from +0x70 on
+// (0x16c08c). They are the battle setup list's player records from +0x70 on
 // (the loader copies 0x70 bytes from its setup argument): the setup writer
-// 0x652210 stores chara at +0x70, costume +0x74, save character slot +0x78,
+// 0x656020 stores chara at +0x70, costume +0x74, save character slot +0x78,
 // here +0, +4, +8. The save slot is the one the CaC came from: the story
-// setup 0x3a8570 passes the save manager's loaded slot (0x81acc0 -> 0x433e0,
+// setup 0x3a87f0 passes the save manager's loaded slot (0x828c60 -> 0x433e0,
 // [mgr+8]+0x44) as that argument.
 static const size_t kPlayerEntries = 0xe0, kPlayerEntrySize = 0x1f0;
-static const int kBattlePlayers = 14;  // setup list slots (0x652210: cmp edx, 0xd)
+static const int kBattlePlayers = 14;  // setup list slots (0x656020: cmp edx, 0xd)
 struct BattlePlayerEntry {
     int32_t charaId;
     int32_t costume;
@@ -625,7 +632,7 @@ struct BattlePlayerEntry {
 };
 
 // Per battle setup list index: the style its last record carried. An entry
-// written without a record (story setup 0x3a8844) has fromRecord false and
+// written without a record (story setup 0x3a8ac4) has fromRecord false and
 // falls back to the local save slot.
 struct SetupStyle {
     bool fromRecord = false;
@@ -680,19 +687,19 @@ static void __fastcall HkLoadBattlePlayer(void* loader, int playerIndex, void* s
 
 // ------------------------------------------------- loadout builder ---
 // void BuildLoadout(character, out, preset): fills a battle setup record
-// from loadout record `preset` of a save character (fn 0x64fa20; negative
-// = record 0, the main loadout - cmovns at 0x64faf8; records 0x68 bytes at
+// from loadout record `preset` of a save character (fn 0x653830; negative
+// = record 0, the main loadout - cmovns at 0x653908; records 0x68 bytes at
 // character + 0xf4). Every battle CaC and the character select preview go
 // through it: story and most modes pass -1, the battle character select
-// passes the preset picked there (per-player table at [0x81ad40(mgr)] +
-// 0xec + player * 4, set by 0x842cb0 from 0x3ab660, read by 0x8424d0 at
-// 0x38d8fe), the preview its r9 (0x5e6754).
-static const uintptr_t kBuildLoadout = 0x64fa20;
+// passes the preset picked there (per-player table at [0x828ce0(mgr)] +
+// 0xec + player * 4, set by 0x850dc0 from 0x3ab8e0, read by 0x8505e0 at
+// 0x38db7e), the preview its r9 (0x5e7294).
+static const uintptr_t kBuildLoadout = 0x653830;
 // mov [rsp+8], rbx (5 bytes, taken by the hook); mov [rsp+0x10], rbp
 static const uint8_t kBuildLoadoutCode[] = {0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C, 0x24, 0x10};
-// Save characters: manager [0x15545b0] + 0x120c0 + slot * 0xe880 (0x81aba0).
-static const uintptr_t kSaveManager = 0x15545b0;
-static const size_t kSaveCharacters = 0x120c0, kSaveCharacterSize = 0xe880;
+// Save characters: manager [0x1568310] + 0x120d0 + slot * 0xe880 (0x828b40).
+static const uintptr_t kSaveManager = 0x1568310;
+static const size_t kSaveCharacters = 0x120d0, kSaveCharacterSize = 0xe880;
 static const int kSaveSlots = 8;
 static const int kLoadoutRecords = 8;  // 0 = main, 1..7 = saved presets
 
@@ -724,15 +731,15 @@ static void __fastcall HkBuildLoadout(void* character, void* out, int preset)
 }
 
 // ------------------------------------------ character select preview ---
-// SelectCharacter's preview (fn 0x5e66d0(menu, chara, costume, r9), only
-// caller 0x5e707a in its update 0x5e6ce0) loads the model under the cursor,
-// paths included (0x657ff0 at 0x5e6974 asks the getter for fields 1/3/7).
-// For a CaC it reads that character from the save with 0x81aba0(save
-// manager [0x15545b0], menu +0x450) - 0x81aba0 returns save character
-// `slot` (0x120c0 + slot * 0xe880; -1 = the loaded one), so +0x450 is the
+// SelectCharacter's preview (fn 0x5e7210(menu, chara, costume, r9), only
+// caller 0x5e7bba in its update 0x5e7820) loads the model under the cursor,
+// paths included (0x65be10 at 0x5e74b4 asks the getter for fields 1/3/7).
+// For a CaC it reads that character from the save with 0x828b40(save
+// manager [0x1568310], menu +0x450) - 0x828b40 returns save character
+// `slot` (0x120d0 + slot * 0xe880; -1 = the loaded one), so +0x450 is the
 // previewed CaC's save slot. Its r9 is the loadout record it shows (passed
-// to 0x64fa20 at 0x5e6754): the preset picked in the character select.
-static const uintptr_t kSelectCharaPreview = 0x5e66d0;
+// to 0x653830 at 0x5e7294): the preset picked in the character select.
+static const uintptr_t kSelectCharaPreview = 0x5e7210;
 // mov rax, rsp; push rdi; push r12 (6 bytes, taken by the hook); push r13
 static const uint8_t kSelectCharaPreviewCode[] = {0x48, 0x8B, 0xC4, 0x57, 0x41, 0x54, 0x41, 0x55};
 static const size_t kSelectCharaSaveSlot = 0x450;
@@ -750,7 +757,7 @@ static int __fastcall HkSelectCharaPreview(void* menu, int charaId, int costume,
 {
     int outerSlot = t_previewSlot, outerPreset = t_previewPreset;
     t_previewSlot = menu ? *(const int32_t*)((const uint8_t*)menu + kSelectCharaSaveSlot) : kNoPreview;
-    t_previewPreset = preset < 0 || preset >= kLoadoutRecords ? 0 : preset;  // as 0x64fa20 reads it
+    t_previewPreset = preset < 0 || preset >= kLoadoutRecords ? 0 : preset;  // as 0x653830 reads it
     int result = g_origSelectCharaPreview(menu, charaId, costume, preset);
     t_previewSlot = outerSlot;
     t_previewPreset = outerPreset;
@@ -759,29 +766,29 @@ static int __fastcall HkSelectCharaPreview(void* menu, int charaId, int costume,
 
 // ------------------------------------------ setup records (online sync) ---
 // The character select turns each local player into a 0x100-byte setup
-// record (packer 0x666ce0) and sends it with 0x666af0(state, record, 0x100,
+// record (packer 0x66abb0) and sends it with 0x66a9c0(state, record, 0x100,
 // 1): online to every lobby member, offline straight to the receiver
-// (0x666c68). Every record - ours and the other players' - becomes a battle
-// setup list entry through 0x668b30(state, record) -> 0x6674a0 -> 0x652210.
-// Record layout (written 0x666d3d.., read 0x668b55..): +0 type word (0 =
+// (0x66ab38). Every record - ours and the other players' - becomes a battle
+// setup list entry through 0x66ca00(state, record) -> 0x66b370 -> 0x656020.
+// Record layout (written 0x66ac0d.., read 0x66ca25..): +0 type word (0 =
 // player), +8 setup list index byte, +0xc chara id, +0x10 costume byte (the
-// packer zeroes it for a CaC at 0x6673bb), +0x12 save slot byte, +0xc0 the
+// packer zeroes it for a CaC at 0x66b28b), +0x12 save slot byte, +0xc0 the
 // name: 64 bytes from strncpy (so zero padded), read back with strlen.
 //
 // The style travels as its CMS code in the name's last 4 bytes. A vanilla
 // game always sends zeros there (= own moveset) and never reads past the
 // name's terminator. So every machine fights every player with the style
 // that player sent; the local equipped_styles.sav only decides what we send.
-static const uintptr_t kPackLoadoutCall = 0x666f0d;  // in the packer: call 0x64fd80(character, record + 0x2c, preset)
-static const uintptr_t kSendRecordCall = 0x6673e6;   // in the packer: call 0x666af0(state, record, 0x100, 1)
-static const uintptr_t kWriteSetupCall = 0x667552;   // in 0x6674a0: call 0x652210 (the setup writer, above)
-static const uint8_t kPackLoadoutCallCode[] = {0xE8, 0x6E, 0x8E, 0xFE, 0xFF};
+static const uintptr_t kPackLoadoutCall = 0x66addd;  // in the packer: call 0x653b90(character, record + 0x2c, preset)
+static const uintptr_t kSendRecordCall = 0x66b2b6;   // in the packer: call 0x66a9c0(state, record, 0x100, 1)
+static const uintptr_t kWriteSetupCall = 0x66b422;   // in 0x66b370: call 0x656020 (the setup writer, above)
+static const uint8_t kPackLoadoutCallCode[] = {0xE8, 0xAE, 0x8D, 0xFE, 0xFF};
 static const uint8_t kSendRecordCallCode[] = {0xE8, 0x05, 0xF7, 0xFF, 0xFF};
-static const uint8_t kWriteSetupCallCode[] = {0xE8, 0xB9, 0xAC, 0xFE, 0xFF};
-static const uintptr_t kReceiveRecord = 0x668b30;
+static const uint8_t kWriteSetupCallCode[] = {0xE8, 0xF9, 0xAB, 0xFE, 0xFF};
+static const uintptr_t kReceiveRecord = 0x66ca00;
 // mov r11, rsp; push rbp; push r15 (6 bytes, taken by the hook); sub rsp, 0xf8
 static const uint8_t kReceiveRecordCode[] = {0x4C, 0x8B, 0xDC, 0x55, 0x41, 0x57, 0x48, 0x81, 0xEC, 0xF8, 0x00, 0x00, 0x00};
-static const int kPlayerRecord = 0;  // record type word (0x668aa0 dispatches 0 to 0x668b30)
+static const int kPlayerRecord = 0;  // record type word (0x66c970 dispatches 0 to 0x66ca00)
 static const size_t kRecordSize = 0x100, kRecordChara = 0xc, kRecordName = 0xc0, kRecordNameSize = 0x40;
 static const size_t kRecordStyle = kRecordSize - 4;  // the name's last 4 bytes
 static const size_t kStyleCodeSize = 4;              // CMS codes are up to 4 chars (entry +4, 4 bytes)
@@ -817,7 +824,7 @@ static std::string OwnStyle(int slot, int preset)
 }
 
 // The record the packer on this thread is building, when it is a save
-// character's (only that path builds the loadout with 0x64fd80, 0x666f0d).
+// character's (only that path builds the loadout with 0x653b90, 0x66addd).
 struct PackingRecord {
     bool saveCharacter;
     int saveSlot;
@@ -832,7 +839,7 @@ static void __fastcall HkPackLoadout(void* character, void* out, int preset)
 {
     g_origPackLoadout(character, out, preset);
     const int slot = SaveSlotOf(character);
-    t_packing = {slot >= 0, slot, preset < 0 || preset >= kLoadoutRecords ? 0 : preset};  // as 0x64fe39 reads it
+    t_packing = {slot >= 0, slot, preset < 0 || preset >= kLoadoutRecords ? 0 : preset};  // as 0x653c49 reads it
 }
 
 typedef uintptr_t (__fastcall* SendRecordFn)(void* state, uint8_t* record, int size, int flags);
@@ -872,7 +879,7 @@ static std::string RecordStyle(const uint8_t* record)
     return style;
 }
 
-// The style of the record this thread's 0x668b30 is applying.
+// The style of the record this thread's 0x66ca00 is applying.
 struct ReceivingRecord {
     bool active;
     std::string style;
@@ -964,7 +971,7 @@ static const uint8_t* volatile g_cms = nullptr;
 // own: the race's BCS with the prop as a physics object on the prop's a_x_*
 // bone, and the race's skeleton with that bone added (the fitted body EAN
 // animates it, ean_fit.h). The game builds the skeleton path from the BCS
-// path - "<bcs path minus .bcs>_000[_LOD01..03].esk" (0x298240, 0x2987f0) -
+// path - "<bcs path minus .bcs>_000[_LOD01..03].esk" (0x298300, 0x2988b0) -
 // so pointing CMS field 0 at "battle_styles/fit/HUM.WIS.bcs" also loads
 // "battle_styles/fit/HUM.WIS_000.esk", and unstyled CaCs keep the race's.
 // The files are made once per race and style (prop_fit.h) from the style's
@@ -1059,15 +1066,15 @@ static bool LoadingStyle(int charaId, std::string& style, int& styleId, std::str
 }
 
 // ---------------------------------------------- character SE bank load ---
-// In 0x298c70 (CharaResource: loads the character's SE bank; only caller
-// 0x11405e in 0x113d40, so inside the battle player loader's thread):
-// 0x298e0c xor r9d, r9d; mov edx, ebx; mov rcx, rbp; call 0x3630a0 at
-// 0x298e14 = LoadSoundBank(sound manager [0x1554490], slot, r8 =
+// In 0x298d30 (CharaResource: loads the character's SE bank; only caller
+// 0x11411e in 0x113e00, so inside the battle player loader's thread):
+// 0x298ecc xor r9d, r9d; mov edx, ebx; mov rcx, rbp; call 0x363320 at
+// 0x298ed4 = LoadSoundBank(sound manager [0x15681f0], slot, r8 =
 // "SE/Battle/Chara/<CSO SE name>", 0); rdi = the resource, chara id at
-// +0xd0 (0x298c9a, 0xc2e90). The call is redirected through a cave that
+// +0xd0 (0x298d5a, 0xc2e90). The call is redirected through a cave that
 // first passes rdi in r9 (mov r9, rdi); the hook calls on with r9 = 0.
-static const uintptr_t kLoadCharaSeAt = 0x298e0c, kLoadCharaSeCall = 0x298e14;
-static const uint8_t kLoadCharaSeCode[] = {0x45, 0x33, 0xC9, 0x8B, 0xD3, 0x48, 0x8B, 0xCD, 0xE8, 0x87, 0xA2, 0x0C, 0x00};
+static const uintptr_t kLoadCharaSeAt = 0x298ecc, kLoadCharaSeCall = 0x298ed4;
+static const uint8_t kLoadCharaSeCode[] = {0x45, 0x33, 0xC9, 0x8B, 0xD3, 0x48, 0x8B, 0xCD, 0xE8, 0x47, 0xA4, 0x0C, 0x00};
 static const uint8_t kPassResourceInR9[] = {0x49, 0x89, 0xF9};  // mov r9, rdi
 static const size_t kResourceChara = 0xd0;
 
@@ -1102,45 +1109,45 @@ static uintptr_t __fastcall HkLoadCharaSe(void* sound, int slot, const char* pat
 // CaC's mob (SpawnEffect below, and its owner when no id is given) use the
 // style's chara id.
 //
-// 0x113d40(holder, {chara, costume, ...}, 0) loads one character's files;
-// the battle player loader calls it at 0x16c484 and 0x16c7b3 (in 0x16c530),
+// 0x113e00(holder, {chara, costume, ...}, 0) loads one character's files;
+// the battle player loader calls it at 0x16c544 and 0x16c873 (in 0x16c5f0),
 // each "xor r8d, r8d; lea rdx, [..]; mov rcx, ..; call". `holder` points at
 // the resource it creates; a battle mob keeps that holder at +0x4d0
 // (0xc2e9c) and the chara id from the resource at +0xbc (0xc2e96).
-static const uintptr_t kLoadCharaFilesAt[] = {0x16c47a, 0x16c7a8};
-static const uintptr_t kLoadCharaFilesCall[] = {0x16c484, 0x16c7b3};
+static const uintptr_t kLoadCharaFilesAt[] = {0x16c53a, 0x16c868};
+static const uintptr_t kLoadCharaFilesCall[] = {0x16c544, 0x16c873};
 static const uint8_t kLoadCharaFilesCode[][16] = {
     {0x45, 0x33, 0xC0, 0x48, 0x8D, 0x55, 0xC7, 0x48, 0x8B, 0xCB, 0xE8, 0xB7, 0x78, 0xFA, 0xFF},
     {0x45, 0x33, 0xC0, 0x48, 0x8D, 0x54, 0x24, 0x40, 0x49, 0x8B, 0xCE, 0xE8, 0x88, 0x75, 0xFA, 0xFF}};
 static const size_t kLoadCharaFilesCodeSize[] = {15, 16};
 
-// RegisterEffects(effect manager [0x1554608], type 2 = character EEPK, chara
-// id, 0, 1, 1): as the loader registers each character's EEPK at 0x16c761
+// RegisterEffects(effect manager [0x1568368], type 2 = character EEPK, chara
+// id, 0, 1, 1): as the loader registers each character's EEPK at 0x16c821
 // (by id through vfx_spec.ers; a chara already registered is looked up
-// first, 0x957090).
-static const uintptr_t kRegisterEffects = 0x956320, kEffectManager = 0x1554608;
+// first, 0x965220).
+static const uintptr_t kRegisterEffects = 0x9644b0, kEffectManager = 0x1568368;
 static const uint8_t kRegisterEffectsCode[] = {0x48, 0x8B, 0xC4, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57};
 static const int kCharacterEepk = 2;
 typedef uintptr_t (__fastcall* RegisterEffectsFn)(void* manager, int type, int charaId, int zero, int one, int one2);
 
-// Battle::MobVfxOwner vtable 0xf5deb0 slot 14 (rva 0xf5df20) = 0x121370:
+// Battle::MobVfxOwner vtable 0xf6bf08 slot 14 (rva 0xf6bf78) = 0x121430:
 // the owner's chara id for character effects: mob [owner+8] (its
 // transformed body [mob+0xa20] when [mob+0x15c0] == 0x34), [mob+0xbc], -1
 // without a mob. xv2patcher (VfxFix) patches that function's code; the
 // slot is chained, not the code.
-static const uintptr_t kVfxOwnerCharaSlot = 0xf5df20, kMobVfxOwnerVtable = 0xf5deb0;
+static const uintptr_t kVfxOwnerCharaSlot = 0xf6bf78, kMobVfxOwnerVtable = 0xf6bf08;
 static const size_t kOwnerMob = 8, kMobState = 0x15c0, kMobTransformed = 0xa20, kMobHolder = 0x4d0;
 static const int32_t kMobStateTransformed = 0x34;
 typedef int (__fastcall* VfxOwnerCharaFn)(void* owner);
 static VfxOwnerCharaFn g_origVfxOwnerChara = nullptr;
 
-// SpawnEffect 0x956ef0(manager, request, eepk type, id, flags, a6, a7): the
-// effect's container is looked up by (type, id) at 0x956fc6 (0x957160). The
-// owner (slot 14 above) is only asked when id < 0 (0x956f8d); a BAC effect
+// SpawnEffect 0x965080(manager, request, eepk type, id, flags, a6, a7): the
+// effect's container is looked up by (type, id) at 0x965156 (0x9652f0). The
+// owner (slot 14 above) is only asked when id < 0 (0x96511d); a BAC effect
 // passes the mob's chara id itself, so for a character EEPK of a styled
 // CaC's mob the hook swaps that id for the style's. request +8 = the owner
-// (0x956fa4). Entry: mov r11, rsp; mov [r11+8], rbx (7 bytes, replayed).
-static const uintptr_t kSpawnEffect = 0x956ef0;
+// (0x965134). Entry: mov r11, rsp; mov [r11+8], rbx (7 bytes, replayed).
+static const uintptr_t kSpawnEffect = 0x965080;
 static const uint8_t kSpawnEffectCode[] = {0x4C, 0x8B, 0xDC, 0x49, 0x89, 0x5B, 0x08, 0x49, 0x89, 0x6B, 0x10};
 static const size_t kSpawnEffectHookSize = 7;
 static const size_t kRequestOwner = 8;
@@ -1153,7 +1160,7 @@ static LoadCharaFilesFn g_origLoadCharaFiles[2] = {};
 
 // Styled CaC resources of the battle players: at most a few loads each.
 // Matched by the resource (*holder), not the holder: the loader copies the
-// holder into the player's map (0x1696f0) and the mob keeps that copy at
+// holder into the player's map (0x1697b0) and the mob keeps that copy at
 // +0x4d0 (0xc2e9c), so only the resource it points at is the same (seen in
 // game: mob holder 0x...64fd0, loaded holders 0x...64e90/654d0/656b0/66330).
 struct StyledResource {
@@ -1187,8 +1194,8 @@ static void* ReadPointer(const void* address)
     }
 }
 
-// A CharaResource's slot, +0xc8: the SE bank load 0x298c70 turns it into the
-// player's sound slot (slot * 2 + 3, 0x298cb2..0x298cf8); -1 when unreadable.
+// A CharaResource's slot, +0xc8: the SE bank load 0x298d30 turns it into the
+// player's sound slot (slot * 2 + 3, 0x298d72..0x298db8); -1 when unreadable.
 static const size_t kResourceSlot = 0xc8;
 
 static int ResourceSlot(const void* resource)
@@ -1236,7 +1243,7 @@ static uintptr_t __fastcall HkLoadCharaFiles1(void* holder, const int32_t* chara
 }
 
 // The body `mob` shows: its transformed body when [mob+0x15c0] == 0x34 (as
-// 0x121370 picks it); null when unreadable (no C++ objects here: __try).
+// 0x121430 picks it); null when unreadable (no C++ objects here: __try).
 static const uint8_t* BodyMob(const uint8_t* mob)
 {
     __try {
@@ -1248,7 +1255,7 @@ static const uint8_t* BodyMob(const uint8_t* mob)
     }
 }
 
-// The owner's mob as 0x121370 picks it; null when unset or unreadable.
+// The owner's mob as 0x121430 picks it; null when unset or unreadable.
 static const uint8_t* OwnerMob(void* owner)
 {
     __try {
@@ -1351,16 +1358,16 @@ static uintptr_t __fastcall HkSpawnEffect(void* manager, void* request, int type
 // Combo List (pause menu; Menu::PopupCombo, POPUP_COMBO.iggy) is no moveset
 // read: the iggy has two fixed pictures, "var1" (the CaC/most characters'
 // longer chains) and "var2" (shorter), picked by the battle pause handler
-// 0x16fef0 from byte +0x14 of the local player's CMS entry ([mob+0x3f0], set
-// at 0xd3534) and passed as the 5th argument of the setup 0x58c020 (call at
-// 0x1701ef). Only DMG, DM2, MRN, CL2 and ZMD have it set, so a CaC styled as
+// 0x16ffb0 from byte +0x14 of the local player's CMS entry ([mob+0x3f0], set
+// at 0xd35f4) and passed as the 5th argument of the setup 0x58cb70 (call at
+// 0x1702af). Only DMG, DM2, MRN, CL2 and ZMD have it set, so a CaC styled as
 // one of those gets the style's picture here (battle-styles-ui.md "Combo List").
-static const uintptr_t kComboListLayoutRead = 0x1701a3;  // movzx edi, byte [rax+0x14]
+static const uintptr_t kComboListLayoutRead = 0x170263;  // movzx edi, byte [rax+0x14]
 static const uint8_t kComboListLayoutCode[] = {0x0F, 0xB6, 0x78, 0x14};
-static const uintptr_t kComboListSetupCall = 0x1701ef;
-static const uintptr_t kBattleManager = 0x1554460;      // global pointer, read at 0x92059
-static const uintptr_t kLocalPlayerIndex = 0x92050;     // fn(battle manager + 0x7c) -> player index (0x170172)
-static const size_t kBattleManagerPlayerArg = 0x7c, kBattleMobs = 0x3a58;  // mobs by player index (0x170180)
+static const uintptr_t kComboListSetupCall = 0x1702af;
+static const uintptr_t kBattleManager = 0x15681c0;      // global pointer, read at 0x92059
+static const uintptr_t kLocalPlayerIndex = 0x92050;     // fn(battle manager + 0x7c) -> player index (0x170232)
+static const size_t kBattleManagerPlayerArg = 0x7c, kBattleMobs = 0x3a58;  // mobs by player index (0x170240)
 static const size_t kMobCmsEntry = 0x3f0, kCmsComboLayout = 0x14;
 
 typedef uint32_t (__fastcall* LocalPlayerIndexFn)(void* playerArg);
@@ -1379,7 +1386,7 @@ static const uint8_t* CmsEntry(const uint8_t* cms, int charaId)
     return nullptr;
 }
 
-// The local player's battle mob and its CMS chara id, as 0x16fef0 finds them;
+// The local player's battle mob and its CMS chara id, as 0x16ffb0 finds them;
 // false when there is none (no C++ objects here: __try).
 static bool LocalBattleMob(const uint8_t*& mob, int& charaId)
 {
@@ -1476,7 +1483,7 @@ static void InstallCmsHook()
     if (matched)  // tried once: a hook must never go in twice
         g_origGetCmsPath = (GetCmsPathFn)HookCode((uint8_t*)(g_base + kGetCmsPath), 5, (void*)&HkGetCmsPath);
     Log(g_origGetCmsPath ? "CMS path hook installed at %.0f ms"
-                         : "CMS path hook NOT installed (%.0f ms): code does not match game 1.26.01", MsSinceStart());
+                         : "CMS path hook NOT installed (%.0f ms): code does not match game 1.27", MsSinceStart());
     if (!g_origGetCmsPath) return;
 
     // Their pages may be decrypted later than the getter's.
@@ -1532,12 +1539,12 @@ static DWORD WINAPI ThreadMain(LPVOID)
 
     bool known = false;
     for (int i = 0; i < 2000 && !known; ++i) {
-        known = IsGame12601();
+        known = IsSupportedGame();
         if (!known) Sleep(5);
     }
     if (!known) { Log("unknown game version - nothing is changed"); return 0; }
-    StyleMenu_InstallDataHooks();  // data only: before the menu file can load
-    StyleMenu_Build(g_cfg.styleChoice, g_cfg.styles, g_cfg.excludeStyles, g_cfg.styleNames, g_cfg.styleSearch);
+    StyleMenu_InstallDataHooks(g_cfg.styleSearch);  // data only: before the menu file can load
+    StyleMenu_Build(g_cfg.styleChoice, g_cfg.styles, g_cfg.excludeStyles, g_cfg.styleNames);
     InstallCmsHook();              // waits for the decrypted code
     if (g_origGetCmsPath) StyleMenu_InstallCodeHooks();
     return 0;

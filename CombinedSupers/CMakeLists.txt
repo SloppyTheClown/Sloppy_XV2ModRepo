@@ -11,7 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Static CRT: runs on machines without the VC++ redistributable.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-set(MOD_SOURCES src/dllmain.cpp src/mod.cpp src/psc.cpp)
+set(MOD_SOURCES src/dllmain.cpp src/mod.cpp src/psc.cpp src/menu_scripts.cpp)
 
 # The shipped combined_supers.json is compiled in, so the mod can write it out
 # when a player has none - and the two can never drift apart.

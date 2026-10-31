@@ -13,11 +13,12 @@ Slots are 0-7 as listed in the game's save slot screen (top = 0).
 copy under %LOCALAPPDATA%\BANDAI NAMCO Entertainment is not read).
 
 What is merged, per CaC (layouts: Xv2CoreLib SAV_File.cs, measured on a
-1.26.01 save 2026-10-11; Research_Notes\save-flags-and-unlocks.md "SaveSync"):
+1.26.01 save 2026-10-11; Research_Notes\savesync.md "SaveSync"):
 * SYSFLAGs (story, shops, badges, X-ultimate, emotes, notices...): OR,
   except the few multi-bit counters in KEEP_OWN_FLAGS.
 * Quest records (story TPQ, parallel TMQ, rifts, mentor lessons, expert,
-  raids, Elder Kai, Frieza siege, Infinite History, PRB, the 1.25 expansions):
+  raids, Elder Kai, Frieza siege, Infinite History, PRB, the DLC story/parallel
+  expansions and the other DLC arrays):
   matched by (type, quest id) since the order differs per slot; per quest the
   furthest state, best rank, best score and the cleared-once flag win; a quest
   only another slot has is added to a free record.
@@ -63,8 +64,14 @@ QUEST_ARRAYS = [
     ("BAQ rift", 2, 105520, 128, CHARACTER_SIZE), ("TCQ mentor lessons", 3, 108592, 256, CHARACTER_SIZE),
     ("HLQ expert", 4, 114736, 96, CHARACTER_SIZE), ("RBQ raid", 5, 117040, 96, CHARACTER_SIZE),
     ("CHQ Elder Kai", 6, 119344, 64, CHARACTER_SIZE), ("LEQ Frieza siege", 7, 120880, 128, CHARACTER_SIZE),
-    ("OSQ Infinite History", 11, 524984, 39, DLC_CHARACTER_SIZE), ("PRB", 12, 525944, 39, DLC_CHARACTER_SIZE),
-    ("TPQ expansion", 0, 527144, 30, DLC_CHARACTER_SIZE), ("TMQ expansion", 1, 530120, 31, DLC_CHARACTER_SIZE),
+    # DLC block: each count is the gap to the next array (measured 2026-10-25;
+    # Xv2CoreLib's 39/39/30/31 predate the later DLC). Story ids run 0-127 /
+    # 128-159 / 160-191 and parallel ids 0-191 / 192-239 across the arrays.
+    ("OSQ Infinite History", 11, 524984, 40, DLC_CHARACTER_SIZE), ("PRB", 12, 525944, 40, DLC_CHARACTER_SIZE),
+    ("type 13", 13, 526904, 10, DLC_CHARACTER_SIZE), ("TPQ expansion", 0, 527144, 32, DLC_CHARACTER_SIZE),
+    ("type 14", 14, 527912, 40, DLC_CHARACTER_SIZE), ("type 15", 15, 528872, 10, DLC_CHARACTER_SIZE),
+    ("type 16", 16, 529112, 10, DLC_CHARACTER_SIZE), ("TPQ expansion 2", 0, 529352, 32, DLC_CHARACTER_SIZE),
+    ("TMQ expansion", 1, 530120, 48, DLC_CHARACTER_SIZE), ("type 18", 18, 531272, 42, DLC_CHARACTER_SIZE),
 ]
 RECORD_SIZE = 24
 STATE, RANK, CLEARED_ONCE, SCORE = 2, 3, 4, 5      # record field indexes

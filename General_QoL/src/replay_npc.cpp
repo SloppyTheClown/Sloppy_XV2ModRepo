@@ -197,11 +197,36 @@ std::wstring ToGameText(const std::string& utf8)
     return w;
 }
 
-struct Want { const char* key; const std::string* text; };
+}  // namespace (NpcMessages is public: mod.cpp hands these to the UI library)
 
-// Replaces the first line of each wanted entry that has non-empty text.
-template <size_t N>
-bool ReplaceMsgLines(const Want (&want)[N], const uint8_t* d, size_t n, std::vector<uint8_t>& out, std::string& note)
+std::vector<NpcMessage> NpcMessages(NpcFile kind, const ReplayNpc& e)
+{
+    std::vector<NpcMessage> all;
+    if (kind == NpcFile::LobbyText) {
+        // Dastar's lines, in the order his talk function uses them.
+        all = {
+            {e.npcNameKey, e.name},
+            {"MSG_FUTURE_EXTPQ_CHOICE", e.greeting},
+            {"MSG_FUTURE_EXTPQ_CHOICE_01", e.option},
+            {"MSG_FUTURE_EXTPQ_SELECT", e.menuLine},
+            {"MSG_FUTURE_EXTPQ_CHOICE_YES", e.farewellGo},
+            {"MSG_FUTURE_EXTPQ_CHOICE_NO", e.farewellStay},
+        };
+    } else if (kind == NpcFile::MenuTitles) {
+        // The quest menu's header (title and subtitle): Dastar's "Future Saga".
+        all = {{"HED_FTS_00_000", e.menuTitle}};
+    }
+    std::vector<NpcMessage> wanted;
+    for (NpcMessage& message : all)
+        if (!message.text.empty()) wanted.push_back(std::move(message));
+    return wanted;
+}
+
+namespace {
+
+// Replaces the first line of each wanted entry.
+bool ReplaceMsgLines(const std::vector<NpcMessage>& want, const uint8_t* d, size_t n, std::vector<uint8_t>& out,
+                     std::string& note)
 {
     if (n < 32 || memcmp(d, "#MSG", 4)) { note = "not a MSG file"; return false; }
     bool uniNames = rd16(d, 4) == 256, uniText = rd16(d, 6) == 1;
@@ -227,11 +252,11 @@ bool ReplaceMsgLines(const Want (&want)[N], const uint8_t* d, size_t n, std::vec
         } else {
             key.assign((const char*)d + so, strnlen((const char*)d + so, size));
         }
-        for (const Want& w : want) {
-            if (w.text->empty() || key != w.key) continue;
+        for (const NpcMessage& w : want) {
+            if (key != w.key) continue;
             uint32_t lineCount = rd32(d, lines + (size_t)i * 8), lrec = rd32(d, lines + (size_t)i * 8 + 4);
             if (!lineCount || (uint64_t)lrec + 16 > n) continue;
-            std::wstring t = ToGameText(*w.text);
+            std::wstring t = ToGameText(w.text);
             if (out.size() & 1) out.push_back(0);
             uint32_t at = (uint32_t)out.size();
             putBytes(out, (const uint8_t*)t.data(), t.size() * 2);
@@ -249,34 +274,24 @@ bool ReplaceMsgLines(const Want (&want)[N], const uint8_t* d, size_t n, std::vec
 bool EditLobbyText(const ReplayNpc& e, const uint8_t* d, size_t n, std::vector<uint8_t>& out, std::string& note)
 {
     if (!e.enabled) { note = "replay NPC off"; return false; }
-    // Dastar's lines, in the order his talk function uses them.
-    const Want want[] = {
-        {e.npcNameKey.c_str(), &e.name},
-        {"MSG_FUTURE_EXTPQ_CHOICE", &e.greeting},
-        {"MSG_FUTURE_EXTPQ_CHOICE_01", &e.option},
-        {"MSG_FUTURE_EXTPQ_SELECT", &e.menuLine},
-        {"MSG_FUTURE_EXTPQ_CHOICE_YES", &e.farewellGo},
-        {"MSG_FUTURE_EXTPQ_CHOICE_NO", &e.farewellStay},
-    };
-    return ReplaceMsgLines(want, d, n, out, note);
+    return ReplaceMsgLines(NpcMessages(NpcFile::LobbyText, e), d, n, out, note);
 }
 
-// The quest menu's header (title and subtitle): Dastar's "Future Saga".
 bool EditMenuTitles(const ReplayNpc& e, const uint8_t* d, size_t n, std::vector<uint8_t>& out, std::string& note)
 {
     if (!e.enabled) { note = "replay NPC off"; return false; }
-    const Want want[] = {{"HED_FTS_00_000", &e.menuTitle}};
-    return ReplaceMsgLines(want, d, n, out, note);
+    return ReplaceMsgLines(NpcMessages(NpcFile::MenuTitles, e), d, n, out, note);
 }
 
 // ------------------------------------------------------- menu title art
 // CMNTITLE_<lang>.iggytex: "oggytex", texture count at 8, then per texture
-// {index, size | 0x80000000, offset | 0x80000000, 0} from 16; each one a DDS.
-// Texture 14 (768x1536 DXT5) holds the newer big menu titles, one per band;
-// "Future Saga" (with its glow) is block rows 254..272 (y 1016..1091), block
-// columns 0..96, in every language. Those blocks become transparent black. The rows just
-// above and below are the gaps between titles (alpha <= 3 from neighbouring
-// glow) and the rest of the band must be empty, or the file is left alone.
+// {u16 id, u16 file, u32 size, u32 offset, u32 0} from 16; each one a DDS
+// (ui-iggy-and-textures.md "Formats"). Texture 14 (768x1536 DXT5) holds the
+// newer big menu titles, one per band; "Future Saga" (with its glow) is block
+// rows 254..272 (y 1016..1091), block columns 0..96, in every language. Those
+// blocks become transparent black. The rows just above and below are the gaps
+// between titles (alpha <= 3 from neighbouring glow) and the rest of the band
+// must be empty, or the texture is left alone.
 
 // Highest alpha of any pixel in a DXT5 block.
 unsigned BlockMaxAlpha(const uint8_t* b)
@@ -298,34 +313,12 @@ unsigned BlockMaxAlpha(const uint8_t* b)
 
 bool EditMenuTitleArt(const ReplayNpc& e, const uint8_t* d, size_t n, std::vector<uint8_t>& out, std::string& note)
 {
-    if (!e.enabled || e.menuTitle.empty()) { note = "keeping the game's title"; return false; }
-    if (n < 16 || memcmp(d, "oggytex", 8)) { note = "not an iggytex file"; return false; }
-    uint32_t count = rd32(d, 8);
-    if (count != 14 || 16 + (size_t)count * 16 > n) { note = "unexpected texture count"; return false; }
-    size_t t = 16 + 13 * 16;
-    uint32_t size = rd32(d, t + 4) & 0x7FFFFFFF, off = rd32(d, t + 8) & 0x7FFFFFFF;
-    if (rd32(d, t) != 14 || (uint64_t)off + size > n || size < 128) { note = "unexpected texture table"; return false; }
-    const uint8_t* dds = d + off;
-    const size_t w = 768, h = 1536;
-    if (memcmp(dds, "DDS ", 4) || rd32(dds, 12) != h || rd32(dds, 16) != w || memcmp(dds + 84, "DXT5", 4) ||
-        128 + (w / 4) * (h / 4) * 16 > size) {
-        note = "texture 14 is not the expected 768x1536 DXT5";
-        return false;
-    }
-    const size_t cols = 97, rowFirst = 254, rowEnd = 273;
-    auto block = [&](size_t row, size_t col) { return off + 128 + (row * (w / 4) + col) * 16; };
-    for (size_t row : {rowFirst - 1, rowEnd})
-        for (size_t col = 0; col < w / 4; ++col)
-            if (BlockMaxAlpha(d + block(row, col)) > 3) { note = "title band not where expected"; return false; }
-    for (size_t row = rowFirst; row < rowEnd; ++row)
-        for (size_t col = cols; col < w / 4; ++col)
-            if (BlockMaxAlpha(d + block(row, col))) { note = "title band not where expected"; return false; }
+    uint32_t offset = 0, size = 0;
+    if (!FindMenuTitleTexture(d, n, n, offset, size, note)) return false;
+    std::vector<uint8_t> dds;
+    if (!BlankMenuTitleArt(e, d + offset, size, dds, note)) return false;
     out.assign(d, d + n);
-    for (size_t row = rowFirst; row < rowEnd; ++row)
-        for (size_t col = 0; col < cols; ++col)
-            memset(out.data() + block(row, col), 0, 16);  // alpha 0 and colour black: Iggy blends
-                                                          // premultiplied, so colour alone still shows
-    note = "\"Future Saga\" title art hidden";
+    memcpy(out.data() + offset, dds.data(), size);
     return true;
 }
 
@@ -458,6 +451,48 @@ bool EditVoiceBank(const ReplayNpc& e, const uint8_t* d, size_t n, std::vector<u
 }
 
 }  // namespace
+
+bool FindMenuTitleTexture(const uint8_t* head, size_t headSize, uint64_t fileSize, uint32_t& offset, uint32_t& size,
+                          std::string& note)
+{
+    if (headSize < 16 || memcmp(head, "oggytex", 8)) { note = "not an iggytex file"; return false; }
+    const uint32_t count = rd32(head, 8);
+    if (count != kMenuTitleTextureCount || headSize < kMenuTitleHeadBytes) { note = "unexpected texture count"; return false; }
+    const size_t entry = 16 + (kMenuTitleTexture - 1) * 16;  // the textures are listed 1..14
+    size = rd32(head, entry + 4);
+    offset = rd32(head, entry + 8);
+    if ((rd32(head, entry) & 0xFFFF) != kMenuTitleTexture || size < 128 || (uint64_t)offset + size > fileSize) {
+        note = "unexpected texture table";
+        return false;
+    }
+    return true;
+}
+
+bool BlankMenuTitleArt(const ReplayNpc& e, const uint8_t* dds, size_t size, std::vector<uint8_t>& out, std::string& note)
+{
+    if (!e.enabled || e.menuTitle.empty()) { note = "keeping the game's title"; return false; }
+    const size_t width = 768, height = 1536, rowBlocks = width / 4;
+    if (size < 128 || memcmp(dds, "DDS ", 4) || rd32(dds, 12) != height || rd32(dds, 16) != width ||
+        memcmp(dds + 84, "DXT5", 4) || 128 + rowBlocks * (height / 4) * 16 > size) {
+        note = "texture 14 is not the expected 768x1536 DXT5";
+        return false;
+    }
+    const size_t cols = 97, rowFirst = 254, rowEnd = 273;
+    auto block = [&](size_t row, size_t col) { return 128 + (row * rowBlocks + col) * 16; };
+    for (size_t row : {rowFirst - 1, rowEnd})
+        for (size_t col = 0; col < rowBlocks; ++col)
+            if (BlockMaxAlpha(dds + block(row, col)) > 3) { note = "title band not where expected"; return false; }
+    for (size_t row = rowFirst; row < rowEnd; ++row)
+        for (size_t col = cols; col < rowBlocks; ++col)
+            if (BlockMaxAlpha(dds + block(row, col))) { note = "title band not where expected"; return false; }
+    out.assign(dds, dds + size);
+    for (size_t row = rowFirst; row < rowEnd; ++row)
+        for (size_t col = 0; col < cols; ++col)
+            memset(out.data() + block(row, col), 0, 16);  // alpha 0 and colour black: Iggy blends
+                                                          // premultiplied, so colour alone still shows
+    note = "\"Future Saga\" title art hidden";
+    return true;
+}
 
 NpcFile ClassifyNpcFile(const std::string& p)
 {

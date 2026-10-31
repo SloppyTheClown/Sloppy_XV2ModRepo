@@ -38,6 +38,13 @@ void Log(const char* fmt, ...)
     if (!g_logging) return;
     wchar_t path[MAX_PATH];
     swprintf_s(path, L"%s\\loader.log", g_dir);
+    // One session per log: the first write of a run moves the last run's log to <name>.prev.log.
+    static volatile LONG rotated = 0;
+    if (!InterlockedExchange(&rotated, 1)) {
+        wchar_t previous[MAX_PATH];
+        swprintf_s(previous, L"%s\\loader.prev.log", g_dir);
+        MoveFileExW(path, previous, MOVEFILE_REPLACE_EXISTING);
+    }
     AcquireSRWLockExclusive(&g_logLock);
     FILE* f = nullptr;
     if (_wfopen_s(&f, path, L"a") == 0 && f) {

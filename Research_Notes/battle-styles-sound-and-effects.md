@@ -15,10 +15,10 @@ battle-styles-fit.md; ACB format: sound.md "Merging two banks".
   cues keep their ids, so Turn Giant's NMC cues still play. Written once per
   session to `data\sound\SE\Battle\Chara\BattleStyles\<STYLE_SE>.<RACE>.acb`
   (own folder, no ".." in the game path).
-* **Bank load (exe 1.26.01):** 0x298c70 (CharaResource SE load; only caller
-  0x11405e in 0x113d40, so on the battle loader's thread) calls
-  0x3630a0(sound manager, slot, "SE/Battle/Chara/<CSO SE>", 0) at 0x298e14
-  (code at 0x298e0c `45 33 c9 8b d3 48 8b cd e8 87 a2 0c 00`); the game adds
+* **Bank load (exe 1.26.01):** 0x298d30 (CharaResource SE load; only caller
+  0x11411e in 0x113e00, so on the battle loader's thread) calls
+  0x363320(sound manager, slot, "SE/Battle/Chara/<CSO SE>", 0) at 0x298ed4
+  (code at 0x298ecc `45 33 c9 8b d3 48 8b cd e8 87 a2 0c 00`); the game adds
   "data/sound/" and ".acb". rdi = the resource (chara +0xd0, costume +0xd4,
   slot +0xc8). Redirected through a cave that does `mov r9, rdi` first;
   for a styled CaC whose path ends in its own CSO bank the hook passes
@@ -31,32 +31,32 @@ battle-styles-fit.md; ACB format: sound.md "Merging two banks".
   (light combo 300-303 -> cue 11 KenFuri); ZBN:MAM 6 cues as 15..20, 4
   remapped. `ClaudeTools\battle_styles\acbmergecheck.py MERGED RACE STYLE`: race
   cue ids/names/audio bytes unchanged, style cues in order with their audio.
-* **Style EEPK:** 0x113d40(holder, {chara, costume, ..}, 0) loads one
-  character's files; the battle player loader calls it at 0x16c484 (code at
-  0x16c47a `45 33 c0 48 8d 55 c7 48 8b cb e8 b7 78 fa ff`) and 0x16c7b3
-  (0x16c7a8 `45 33 c0 48 8d 54 24 40 49 8b ce e8 88 75 fa ff`). After it,
+* **Style EEPK:** 0x113e00(holder, {chara, costume, ..}, 0) loads one
+  character's files; the battle player loader calls it at 0x16c544 (code at
+  0x16c53a `45 33 c0 48 8d 55 c7 48 8b cb e8 b7 78 fa ff`) and 0x16c873
+  (0x16c868 `45 33 c0 48 8d 54 24 40 49 8b ce e8 88 75 fa ff`). After it,
   for a styled CaC the mod registers the style's character EEPK like the
-  loader does at 0x16c761: 0x956320(*(base+0x1554608), 2, style chara, 0, 1,
+  loader does at 0x16c821: 0x9644b0(*(base+0x1568368), 2, style chara, 0, 1,
   1) (entry `48 8b c4 57 41 54 41 55 41 56 41 57`; it looks an id up first,
-  0x957090), once per player and style, and remembers the holder.
-* **Effect owner:** Battle::MobVfxOwner vtable 0xf5deb0 slot 14 (rva
-  0xf5df20) = 0x121370: mob [owner+8] ([mob+0xa20] when [mob+0x15c0] ==
+  0x965220), once per player and style, and remembers the holder.
+* **Effect owner:** Battle::MobVfxOwner vtable 0xf6bf08 slot 14 (rva
+  0xf6bf78) = 0x121430: mob [owner+8] ([mob+0xa20] when [mob+0x15c0] ==
   0x34), returns [mob+0xbc] (= resource +0xd0) or -1. xv2patcher's VfxFix
   patches that code, so the slot is chained. The hook returns the style's
   chara id when the mob's holder ([mob+0x4d0], 0xc2e9c) is a remembered
   styled resource. Race BACs and both Turn Giant BACs use no character-EEPK
   effect, so the race loses nothing.
 * **The owner hook alone did nothing in game** (registration logged, no beam
-  sword): SpawnEffect **0x956ef0**(manager, request, type, id, flags, a6, a7;
+  sword): SpawnEffect **0x965080**(manager, request, type, id, flags, a6, a7;
   callers include 0xc3067/0xc30a8, 0x9b1d9, 0x9edc7) looks the container up
-  by (type, id) at 0x956fc6 (0x957160) and asks the owner ([request+8]
-  ->slot 14, 0x956fa4) **only when id < 0** (0x956f8d; type 1 always
+  by (type, id) at 0x965156 (0x9652f0) and asks the owner ([request+8]
+  ->slot 14, 0x965134) **only when id < 0** (0x96511d; type 1 always
   asks). BAC effects pass the mob's chara id themselves. Fix: an entry hook
   (7 bytes `4c 8b dc 49 89 5b 08` replayed) swaps a character-EEPK id for
-  the style's when [request+8] is a MobVfxOwner (vtable 0xf5deb0) of a
+  the style's when [request+8] is a MobVfxOwner (vtable 0xf6bf08) of a
   styled mob. Found by `ClaudeTools\exe\vcallnear.py` (virtual +0x70 calls in
   0x940000..0x9a0000). The holder match was checked statically: the loader
-  puts the 0x113d40 holder in the player's map (0x1696f0 at 0x16c4b5 /
+  puts the 0x113e00 holder in the player's map (0x1697b0 at 0x16c4b5 /
   0x16c7a3, map at +0x3978 + player*16), 0xe7940 reads it back with
   0xe2e60 and passes it to the mob setup 0xc2b10, which stores it at
   +0x4d0.
@@ -67,43 +67,43 @@ battle-styles-fit.md; ACB format: sound.md "Merging two banks".
   "character effect of race chara %d spawned from style chara %d's EEPK". So
   HkSpawnEffect never swapped: one of its checks fails, and the log can't
   say which. Suspects, in the order to check:
-  1. ZMG's BAC effects don't reach 0x956ef0 with type 2 at all (another
+  1. ZMG's BAC effects don't reach 0x965080 with type 2 at all (another
      spawn function, or the BAC EepkType is mapped to a different manager
-     type before the call; the 0x956ef0 callers 0xc3067/0xc30a8 weren't
+     type before the call; the 0x965080 callers 0xc3067/0xc30a8 weren't
      traced back to the BAC type-8 handler).
   2. The id passed isn't the CaC's chara id (IsCac fails) - e.g. the BAC
      path passes something already resolved, or the owner's id via another
      route.
-  3. [request+8] isn't a MobVfxOwner (vtable 0xf5deb0) for BAC effects.
-  4. The holder at [mob+0x4d0] isn't the pointer passed to 0x113d40 (the
+  3. [request+8] isn't a MobVfxOwner (vtable 0xf6bf08) for BAC effects.
+  4. The holder at [mob+0x4d0] isn't the pointer passed to 0x113e00 (the
      static proof may have followed the wrong map entry), or the mob is the
      transformed body.
   Next step: a diagnostic build that logs the first ~40 SpawnEffect calls
   (type, id, owner vtable rva, holder, remembered holders) - bounded, not
   per tick - then read the log after one light combo. Also confirm
-  0x956ef0 is hit at all (the hook itself is logged as installed).
+  0x965080 is hit at all (the hook itself is logged as installed).
   Not tried yet: checking whether ZMG's EEPK actually got registered under
-  142 (0x957090 lookup after the register call), and whether xv2patcher's
+  142 (0x965220 lookup after the register call), and whether xv2patcher's
   VfxFix changes this path.
 * **Diagnostic build (2026-10-11, installed, not run yet):** `trace ...`
   lines in battle_styles.log (logging only, fixed budgets): `trace load
-  site` (holder -> *holder per styled load), `trace register` (0x957090
+  site` (holder -> *holder per styled load), `trace register` (0x965220
   (manager, 2, id, flag 0/1) containers for style + race chara after
   registering), `trace spawn (any|chara|styled)` (caller rva, type, id ->
   swapped id, owner vtable, mob, [mob+0xbc], [mob+0x4d0], styled match),
-  `trace owner` (slot 14 calls answering a CaC id). Static: 0x956ef0 has
-  ~120 call sites; the only other (type, id) lookups (0x957160) are
-  0x955970/0x9559e0/0x955f50/0x9560a0/0x956d10. 0x956ef0 first calls an
+  `trace owner` (slot 14 calls answering a CaC id). Static: 0x965080 has
+  ~120 call sites; the only other (type, id) lookups (0x9652f0) are
+  0x955970/0x9559e0/0x955f50/0x9560a0/0x956d10. 0x965080 first calls an
   optional manager callback [manager+0x90](request, type, id, ...).
   Side note: mod.cpp's kLastCac is 107, the exe's CaC range is 100..109
   (only 8 CaC races exist; 108/109 look provisioned, unused - kept at 107).
 * **Diagnostic result (2026-10-11, NMC + ZMG, Training):** suspect 4. BAC
-  character effects come from **0xf9788** into 0x956ef0 with type 2, **id
+  character effects come from **0xf9788** into 0x965080 with type 2, **id
   -1** (so the id swap in HkSpawnEffect can never apply; the owner path
   does it), owner = MobVfxOwner, [mob+0xbc] = 104, and the owner slot 14
   is asked from 0x956fae as expected. But [mob+0x4d0] (0x...64fd0) was none
-  of the four holders passed to 0x113d40 (0x...64e90/654d0/656b0/66330):
-  the mob keeps the **copy** the loader puts in the player's map (0x1696f0),
+  of the four holders passed to 0x113e00 (0x...64e90/654d0/656b0/66330):
+  the mob keeps the **copy** the loader puts in the player's map (0x1697b0),
   whose first field is the resource (0xc2e90 reads [[+0x4d0]]+0xd0 as the
   chara id). Register check: (2, 142, flag 0) container exists after
   registering, flag 1 none; race 104 has no character container at all.
@@ -114,9 +114,9 @@ battle-styles-fit.md; ACB format: sound.md "Merging two banks".
 * **Resource match failed too (2026-10-11 run 2):** lookup flag 0 (fine),
   but the mob's resource 0x...71640 was none of the four `*holder`s
   (0x...70740/71a00/71dc0/739e0) - same pool, stride 0x3c0, so the mob
-  gets its own CharaResource from somewhere not traced (0x113d40 only
+  gets its own CharaResource from somewhere not traced (0x113e00 only
   fills an existing [holder]: `cmp [rsi], 0; je` at 0x113dea, and
-  0x298c70 at 0x11405e gets that same [rsi], so the SE hook sees the same
+  0x298d30 at 0x11411e gets that same [rsi], so the SE hook sees the same
   four). Race chara 104 has **no** (2, 104) container, so a CaC's
   character effects find nothing anyway and mapping to the style is safe.
   Build 3 matches: same resource, else same resource slot (+0xc8; the SE
@@ -150,7 +150,7 @@ battle-styles-fit.md; ACB format: sound.md "Merging two banks".
   ZMG's beam sword + grab light showed on player 3. So the mob's resource
   +0xc8 = battle player index too, and the slot match does the work.
   Afterwards all `trace ...` lines (and the diagnostic FindEffects
-  0x957090 call) were removed; the owner hook now logs one line per slot
+  0x965220 call) were removed; the owner hook now logs one line per slot
   and answer ("slot N: character effects of race chara X from style chara
   Y's EEPK"). The SpawnEffect id swap stays in (it never applies: BAC
   passes id -1, so the owner hook does the work).
@@ -166,17 +166,17 @@ battle-styles-fit.md; ACB format: sound.md "Merging two banks".
   and relinking fixed it - check the test runs before trusting a build.
 
 ## Cue limit crash (merged SE bank) (2026-10-11, built, NOT yet seen in game)
-Crash 21:28:41 (and very likely the 20:15 one): exe 0x9bba67, in CRI sound
+Crash 21:28:41 (and very likely the 20:15 one): exe 0x9c9907, in CRI sound
 playback (stack BattleEventKey_Snd 0x363670 -> criAtomExPlayer start ->
-command interpreter 0x9cbca0 -> 0x9b814c -> 0x9bb918). Players: P0 NMC +
+command interpreter 0x9d9b40 -> 0x9c5fec -> 0x9bb918). Players: P0 NMC +
 VTO, P1 NMC + PR1, whose SE bank is CAR_BTL_FIO_SE -> merged
 `CAR_BTL_FIO_SE.NMC` (FIO.NMC also existed at 20:00).
 * 0x9bb918(list, freeNodes, item) pushes a playback onto a cue limit work
   area; with no free node it steals the list head, which was garbage.
-  0x9b814c gets the work area as `[[r13+0x50]+0x13a8] + index*0x30` (list
+  0x9c5fec gets the work area as `[[r13+0x50]+0x13a8] + index*0x30` (list
   0x18 + free node list 0x18; nodes from `+0x13b0`), index and limit from
   the command's parameters. The interpreter's jump table (0x9cdc88, codes
-  0..0x81) sends codes **0x0049 and 0x004f** to 0x9ccd2d ("Ignore the cue
+  0..0x81) sends codes **0x0049 and 0x004f** to 0x9dabcd ("Ignore the cue
   limit information" warning on old ACB versions): u16 limit, u16 work
   index (+ u8 for 0x4f).
 * The array is sized by the ACB header's `NumCueLimitListWorks` /
@@ -194,13 +194,13 @@ VTO, P1 NMC + PR1, whose SE bank is CAR_BTL_FIO_SE -> merged
 
 ## Cue limit work buffer (2026-10-12, confirmed in game: Training with the GAL style no longer crashes)
 Crash in Training as soon as the CPU (player 3, HUM CaC + GAL style) attacked:
-`strlen(NULL)` in the CRI play-start logging 0x9af298, character SE (BAC
+`strlen(NULL)` in the CRI play-start logging 0x9bd138, character SE (BAC
 type 2) cue 53 = GAL cue 43 in the merged `CAR_BTL_GAL_SE.HUM`.
 * The lookup chain: 0x997a50(acb, cue id) -> name; 0x9978c0 id -> row by a
   binary search of the CueTable (0x9d1290 -> 0x9d4214, CueTable at
   acb+0x1f0), then 0x9d0fd4 row -> name by a linear scan of the CueNameTable
   (acb+0x288) for CueIndex (column 0 CueName, 1 CueIndex); returns 0 when
-  not found, and 0x9af298 strlens it anyway, so any missing id/name crashes.
+  not found, and 0x9bd138 strlens it anyway, so any missing id/name crashes.
 * The merged file passed all of that offline (ids sorted 0..54, name table
   columns like vanilla, every row named). The real difference: the top
   table's **`CueLimitWorkTable` is the work areas' memory**, stored zeroed in

@@ -1,7 +1,9 @@
 # Debug Menu
 
+**Version 1.0.1** · for Dragon Ball Xenoverse 2 **1.27** · needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
+
 Adds a "Debug Menu" section to XV2 Mod Loader's in-game menu for Dragon Ball
-Xenoverse 2 (game version 1.26.01): noclip and an item getter.
+Xenoverse 2 (game version 1.27): noclip and an item getter.
 
 ---
 

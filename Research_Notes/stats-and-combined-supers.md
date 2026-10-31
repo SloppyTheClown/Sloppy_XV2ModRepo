@@ -107,7 +107,39 @@ Pointer in `rbx` at the damage hook:
   +0x250/+0x254/+0x280/+0x2b0 change with Height = body size / hitbox.
 * The battle struct grew 0x20 above +0xC4 from 1.25.02 to 1.26.01.
 
-## How the mod finds characters
+## The game's stat recompute + push (2026-10-15, static RE of 1.26.01)
+Replaces the scan below (build installed 2026-10-15, not seen in game yet).
+* Stat blocks are 0x340 bytes. 0x6a720 zeroes one; 0x6ad30 resets a
+  multiplier block (zero, 1.0 at +0x54, +0x60, +0x74, +0x88..+0xA4, +0xB0);
+  0x6a100(a, b) a += b per field; 0x6b7f0(a, b) a *= b per field; 0x6bcc0
+  clamps a block.
+* 0x57b20(param) = the recompute (~17 callers - spawn, buffs, transforms).
+  rsi = param+0x340 is reset to 1.0, then buff blocks added from
+  [param+0x9c0], [+0x9d8], [+0x9c8] (only if [+0xc0c]), [+0x9d0] and
+  param+0x680; mode 7 (raid?) gets an extra mul/add (0x919e0 / 0x91960). At
+  0x58077 `0x6b7f0(rsi, param)` makes rsi = multipliers x BASE (base block =
+  param+0). Clamp, then 0x58230 `call 0x6bd70(0x6a7f0([param+0xaa8], 1), rsi)`.
+* 0x6bd70(obj, final) = the push: copies obj+0xb0 to a local, overlays the
+  stat fields from `final` (+0x54 max HP, +0x60, +0x74, +0x88..+0xA7, +0xB0..)
+  and writes it back. obj+0xb0 IS the live battle struct the damage code's
+  rbx points at (0x1180f0 is called with rcx = r13+0xb0 from 0xc80c7,
+  0xc821e, 0xfcc38, 0xfccff, 0x14ef84, 0x14ef9a). Current HP (+0x50) is kept,
+  max HP reset to the game's value on every push.
+* Exactly two callers, both with rdx = param+0x340: 0x58230 (`48 8b d6 48 8b
+  c8 e8 3b 3b 01 00`, in 0x57b20) and 0x4d728 (`48 8d 93 40 03 00 00 48 8b c8
+  e8 43 e6 01 00`, in 0x4d700, which re-pushes without recomputing). So at
+  either site base = rdx - 0x340, strike +0x90, ki +0x94.
+* Combined Supers now retargets both rel32 calls to a trampoline into
+  `OnStatsPushed`: run the push, then solve from the base block (M = 1;
+  fallback: the old solver on the live stats), publish the factor keyed by
+  obj+0xb0, add the Height HP (current HP raised only if it was full before
+  the push or the game filled it). The status file shows per fighter whether
+  U came from "base" or "live" and the push count - check that it says base.
+* Unverified: that the base block holds points+gear exactly (if gear is a
+  buff block, U from base excludes it), that the push precedes the first
+  super, how often 0x57b20 runs in a fight.
+
+## How the mod found characters (before 2026-10-15)
 * Damage caves push {rbx, live_s, live_k} into a ring and multiply by a
   per-character factor (one mulss). Ring-sourced pointers are adopted with a
   loose check; scanned ones need the full fingerprint.
@@ -216,7 +248,7 @@ the baseline was taken against another race)
   BLA/STM +0x00..+0x14, more ids +0x18..+0x24, super soul +0x2C. No pointer to
   it anywhere; scanning for it by structure matches huge parts of memory and
   crashed CE. Only usable for the local player - see the multiplayer rule.
-  (Revamp's patches reach the same records at [0x1554448]+0x1E8B4 x 0xC6C8.)
+  (Revamp's patches reach the same records at [0x15681a8]+0x1E8B4 x 0xC6C8.)
 
 ## Testing
 * `ClaudeTools\ticktest\run.bat` feeds Tick() measured values (build the mod first).

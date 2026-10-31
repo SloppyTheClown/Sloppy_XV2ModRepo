@@ -10,6 +10,7 @@
     "unlock_level_cap": true,
     "tp_shop_all_seasons": true,
     "mentor_names_on_map": true,
+    "free_attribute_points": true,
     "reveal_hidden_conditions": false,
     "raid_characters": false,
     "wait_for_all_ready": true,
