@@ -20,6 +20,9 @@
 //       applies text edits as XV2UserInterfaceLib's message stages do (text
 //       as UTF-8, plain: ' " & < > become entities); the result must parse,
 //       round-trip and hold every named text.
+//   xv2ui display <in.iggy> <commands.txt> <out.iggy>
+//       applies display-list edits (clone / matrix, formats\display_edit.h) as the
+//       display stage does; the result must parse and round-trip.
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -28,6 +31,7 @@
 #include <vector>
 #include "../src/formats/abc.h"
 #include "../src/formats/abc_merge.h"
+#include "../src/formats/display_edit.h"
 #include "../src/formats/iggy_file.h"
 #include "../src/formats/image_edit.h"
 #include "../src/formats/msg_file.h"
@@ -447,6 +451,25 @@ int Messages(const std::vector<std::string>& args)
     return 0;
 }
 
+// Applies a command file to a menu (ui_lib.cpp DisplayStage) and checks the result.
+int Display(const std::vector<std::string>& args)
+{
+    if (args.size() != 3) { printf("xv2ui display <in.iggy> <commands.txt> <out.iggy>\n"); return 2; }
+    const Bytes menu = ReadFile(args[0]);
+    const Bytes text = ReadFile(args[1]);
+    const std::vector<DisplayCommand> commands = ParseDisplayCommands(std::string(text.begin(), text.end()));
+    DisplayReport report;
+    const Bytes written = ApplyDisplay(menu, commands, &report);
+    printf("%s\n", report.Summary().c_str());
+    for (const std::string& line : report.notes) printf("    %s\n", line.c_str());
+    IggyDocument document;
+    document.Parse(written.data(), written.size());
+    if (document.Write() != written) { printf("result doesn't round-trip\n"); return 1; }
+    printf("result: 0x%zx bytes%s\n", written.size(), report.Changed() ? "" : " (unchanged)");
+    if (!WriteFile(args[2], written)) { printf("can't write %s\n", args[2].c_str()); return 1; }
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv)
@@ -456,7 +479,8 @@ int main(int argc, char** argv)
                "xv2ui merge <game> [-base mod_base] <mod>... [-o out.abc|out.iggy] [-expect x.abc]\n"
                "xv2ui code <iggy|abc> <method>\nxv2ui traits <iggy|abc> [class]\n"
                "xv2ui images <game texture file> <name>=<image>... [-then ...] [-o out]\n"
-               "xv2ui messages <game .msg> <name>=<text>... [-then ...] [-o out]\n");
+               "xv2ui messages <game .msg> <name>=<text>... [-then ...] [-o out]\n"
+               "xv2ui display <in.iggy> <commands.txt> <out.iggy>\n");
         return 2;
     }
     const std::string command = argv[1];
@@ -467,6 +491,7 @@ int main(int argc, char** argv)
         if (command == "merge") return Merge(args);
         if (command == "images") return Images(args);
         if (command == "messages") return Messages(args);
+        if (command == "display") return Display(args);
         if (command == "code" && args.size() == 2) return Code(args[0], (uint32_t)std::stoul(args[1]));
         if (command == "traits") return Traits(args[0], args.size() > 1 ? args[1] : "");
     } catch (const std::exception& error) {

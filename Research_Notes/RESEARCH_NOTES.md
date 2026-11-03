@@ -21,6 +21,7 @@ with a "Covers:" line; don't read the others unless that one points there.
 | [save-inventory-and-skills.md](save-inventory-and-skills.md) | inventory/skill lists in memory, giving items/unlocking skills (debug menu item getter) |
 | [sound.md](sound.md) | which cue an event plays, voice banks, ACB edits, volume options/categories |
 | [ui-iggy-and-textures.md](ui-iggy-and-textures.md) | menu titles, .iggy/.iggytex/.iggyted, texture renumbering, EMB images, msg text lookup, editing AS3, merging several mods' menu script/texture edits |
+| [ui-iggy-display-list.md](ui-iggy-display-list.md) | an .iggy sprite's timeline (PlaceObject/ShowFrame records), adding a button or resizing a box by display-list edit, AVATAR edit_menu/editmenu layout |
 | [ui-item-lists.md](ui-item-lists.md) | item lists (Menu::ItemList), Item Search |
 | [ui-menu-screens.md](ui-menu-screens.md) | specific menus: lobby map (LOBYHUD), stat radar chart (CMN_CHART), attributes screen |
 | [boot-and-camera.md](boot-and-camera.md) | logos, intro movie, title, the renderer camera, culling, camera zoom |
@@ -39,6 +40,8 @@ with a "Covers:" line; don't read the others unless that one points there.
 | [costumes-and-models.md](costumes-and-models.md) | costume x2m by script (x2m.xml, BCS part sets, IDB), EMD/EMM/EMB via the XML serializer, character shaders; accessories as physics objects (keep the hair), XV2_ClownNose; local x2m sources/tools, checking an installed x2m |
 | [multi-accessory.md](multi-accessory.md) | wearing up to 3 accessories at once (phase 0: loader/storage traced, cap 4 objects): accessory loading, extra save/equip slots, sending extras online, blockers |
 | [multi-accessory-phase0.md](multi-accessory-phase0.md) | multi accessory phase 0 detail: model builder, CharaResourceBase part/physics paths, physics cap, record layout |
+| [ki-blast-type.md](ki-blast-type.md) | the CaC's charged ki blast type: race/super soul pick 0x618d30 and its callers, loadout +0xa2, online record, type names, equip-mod plan |
+| [multi-accessory-presets.md](multi-accessory-presets.md) | multi accessory in the Presets panel: extras' rows, part set -> item name, panel layout, merging with Battle Styles' row |
 | [multi-accessory-wigs.md](multi-accessory-wigs.md) | stacking a 2nd part per slot (wigs/helmets): Chara part slots, hide mask, xgcore Skeleton model map, plan |
 
 ## Adding to these notes

@@ -2,6 +2,11 @@
 
 The version is in `VERSION`; it goes up with every release.
 
+## 1.1.0 - 2026-11-02
+
+* The lobby's Presets panel lists a preset's extras as "Accessory 2" and
+  "Accessory 3". The panel sits 48 px higher to fit them.
+
 ## 1.0.0 - 2026-10-31
 
 * First release, for game version 1.27. Needs XV2 Mod Loader 1.1.0 or newer.

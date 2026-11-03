@@ -70,6 +70,16 @@ Moved to their own files (2026-10-22):
   `Dispatcher.BeginInvoke(..., DispatcherPriority.Background)` and keep the
   edited animation selected. `ClaudeTools\camera-id-test` reproduces the old
   failure with a minimal DataGrid.
+* **Loading an already loaded skill/character closed the app.** Loads run in
+  `Task.Run`, so the "already loaded" `MessagePrompt` in
+  `Files.AddOutlinerItem` was built on a thread pool (MTA) thread. WPF's Window
+  constructor throws `InvalidOperationException`, and the method is `async
+  void`, so the exception ends the process with no prompt (the stack is in the
+  Windows Application event log, source ".NET Runtime"). `MessagePrompt.InternalShow`
+  (LB_Common, marked "Local addition") now moves to the UI dispatcher, which
+  covers every caller, and the prompt is outside `lock(OutlinerItems)` because
+  the load thread now waits on the UI. `ClaudeTools\xenokit_prompt_thread_probe\Probe.cs`
+  shows the prompt from an MTA thread (compile against the extracted build).
 
 ## Vanilla/mod effects and where an effect is used (2026-10-19)
 * **Vanilla check.** The library now marks each effect `Vanilla` or `Mod`. The
@@ -164,7 +174,10 @@ Moved to their own files (2026-10-22):
 * MSBuild 2022 x64. `MSB4216` / `MSB4028` (`GenerateResource` task host) is an
   environment restriction (e.g. a sandbox blocking the task host), not code.
 
-## State (2026-10-23)
+## State (2026-11-02)
+* "Already loaded" crash fixed (see "Gotchas found the hard way"). Built; the
+  prompt passes the offline probe, not yet seen in the editor.
+* Camera/animation ID edit fix and older entries below date from 2026-10-23.
 * Camera/animation ID edit fix (2026-10-23): swapping IDs in the Camera tab
   used to throw `'Refresh' is not allowed during an AddNew or EditItem
   transaction.` (the synchronous sort, see "Gotchas found the hard way"). Both
@@ -184,18 +197,21 @@ Moved to their own files (2026-10-22):
   seen past a monitor sleep: `D3D11Host.DisplayPower.cs` in MonoGameWpfInterloop registers
   GUID_CONSOLE_DISPLAY_STATE and on "off" stops rendering + detaches the
   D3DImage back buffer, on "on" recreates it; `ExceptionHelper` shows this one
-  error in a plain Win32 MessageBox (GDI) since the WPF prompt can't draw. If it
-  still happens after the fix, the fallback is `RenderOptions.ProcessRenderMode
-  = SoftwareOnly` (slower).
+  error in a plain Win32 MessageBox (GDI) since the WPF prompt can't draw.
   It happened again (2026-10-25) when every monitor loses power at once: no
-  "display off" notification is sent, the displays just vanish. Dead end: WPF's
+  "display off" notification is sent, the displays just vanish. Dead ends: WPF's
   AppContext switch
   `Switch.System.Windows.Media.ShouldRenderEvenWhenNoDisplayDevicesAreAvailable`
-  alone (set in `App`'s static constructor, still there) did not stop it. Now
-  `App`'s static constructor also sets `ProcessRenderMode = SoftwareOnly`; the
-  viewport still shows because D3D11Image attaches with enableSoftwareFallback
-  (WPF copies each frame to system memory). Built; not yet checked that the
-  viewport speed is acceptable or that it survives a power cut.
+  alone (set in `App`'s static constructor, still there) did not stop it, and
+  `RenderOptions.ProcessRenderMode = SoftwareOnly` turned the viewport black
+  (2026-11-02, removed). Now `D3D11Host.DisplayPower.cs` also pauses when
+  `GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS)` reports 0 paths (not
+  SM_CMONITORS, which can keep a placeholder monitor): checked on WM_DISPLAYCHANGE,
+  every frame (0.6 us per call) and on a 1 s timer. Displays seen on 2 timer checks
+  in a row resume it, recreating the back buffer; a failed recreate retries on
+  the next check. An active Parsec virtual display counts as a monitor, so
+  no pause while one is up. Built; not yet seen past a power cut, and if WPF's
+  render thread still dies the shared surface wasn't the whole cause.
 * Effect Library: label positions confirmed in the editor after the X-mirror
   fix.
 * Click-to-isolate (highlight one label, hide every other cell, click again to

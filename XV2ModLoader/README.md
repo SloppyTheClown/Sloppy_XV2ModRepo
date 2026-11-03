@@ -1,6 +1,6 @@
 # XV2 Mod Loader
 
-**Version 1.1.0** · for Dragon Ball Xenoverse 2 **1.27** (Steam)
+**Version 1.2.0** · for Dragon Ball Xenoverse 2 **1.27** (Steam)
 
 A small mod loader for Dragon Ball Xenoverse 2. It loads DLL mods and Lua
 scripts from their own folders instead of the game's `bin` folder, and comes
@@ -260,7 +260,8 @@ a time, and text (`.msg`) files one entry at a time.
 | `uilib.RemoveImage(path, name)` | drop one of your images of `path` |
 | `uilib.SetMessage(path, name, text, order)` | set the text of the entry `name` of the `.msg` file `path` (e.g. `"msg/lobby_text_en.msg"`, `"name_4293"`), or add the entry when missing. `text` is plain UTF-8. Other entries, and other mods' entries, stay; the same entry from two mods: the later wins |
 | `uilib.RemoveMessage(path, name)` | drop one of your entries of `path` |
-| `uilib.Remove(path)` | drop your edit of `path` (its script, or all your images or messages of it) |
+| `uilib.edit_display(path, commands, order)` | edit the timeline of the `.iggy` menu `path`: `commands` is text, one per line, `clone <sprite> <source> <name> <dx> <dy>` (a copy of a placement, e.g. one more button; does nothing when `<name>` exists) and `matrix <sprite> <target> <frame> <a> <b> <c> <d> <tx> <ty>` (`*` keeps a value, `+=<n>` adds to it). `<sprite>` is a placement's instance name or `#<id>`; `<source>`/`<target>` a placement name or `@<depth>`. Your earlier commands for the path are replaced |
+| `uilib.Remove(path)` | drop your edit of `path` (its script, display list, or all your images or messages of it) |
 
 Register in the script's main body or `_OnInit` (the game reads some files,
 like `lobby_text`, during boot: an edit registered after that misses the
@@ -305,7 +306,7 @@ a thread of your own.
   Lua ones). Any thread may call them.
 * A DLL mod can edit menus and menu textures alongside other mods the same
   way as `uilib`: copy `sdk\xv2_ui.h` (`XV2UI_EditScript`, `XV2UI_SetImage`,
-  `XV2UI_SetMessage`, ...).
+  `XV2UI_SetMessage`, `XV2UI_EditDisplay`, ...).
 
 ### Libraries
 

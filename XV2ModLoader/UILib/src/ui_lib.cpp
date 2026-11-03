@@ -16,6 +16,9 @@
 //  mods changing different images of one file all apply.
 //  Message edits do the same with the game's text (.msg): a mod names the
 //  entries whose text it sets (formats\msg_file.h).
+//  Display edits change a menu's timeline (formats\display_edit.h): clone a
+//  sprite's placement (one more button row), set a placement's matrix in a
+//  frame. A mod's script edit and display edit of one menu are two stages.
 //
 //  DLL mods: the XV2UI_* exports (sdk\xv2_ui.h). Lua scripts: the "uilib"
 //  table (sdk\modloader_lib.lua); a script's edits are dropped on an F1
@@ -38,6 +41,7 @@
 #include "modloader_lib.h"
 #include "xv2_files.h"
 #include "formats/abc_merge.h"
+#include "formats/display_edit.h"
 #include "formats/iggy_file.h"
 #include "formats/image_edit.h"
 #include "formats/msg_file.h"
@@ -486,7 +490,109 @@ bool SetMessage(const std::string& owner, const std::string& path, bool fromScri
     return true;
 }
 
-// Removes owner's edit of path (script, images or messages). False when there was none.
+// --- Display-list edits --------------------------------------------------------
+
+// One mod's display commands for one .iggy menu (formats\display_edit.h),
+// applied over the menu as the mods before it left it. One stage per owner
+// and file; it is registered under StageOwner(owner) because the loader keeps
+// one stage per owner and path and the same owner's script edit of the menu
+// is another stage.
+struct DisplayEdit {
+    std::string owner, path;
+    std::string key;                // as ScriptEdit::key
+    bool fromScript = false;
+    std::vector<xv2ui::DisplayCommand> commands;
+};
+
+const char kDisplayStageSuffix[] = " (display)";
+
+std::string StageOwner(const std::string& owner) { return owner + kDisplayStageSuffix; }
+
+// As g_edits / g_liveEdits (same lock, never freed for the same reason).
+std::vector<std::unique_ptr<DisplayEdit>> g_displayEdits;
+std::vector<DisplayEdit*> g_liveDisplayEdits;
+
+// The pipeline stage of one display edit. Never throws.
+int __cdecl DisplayStage(void* user, const char* path, const void* original, size_t originalSize, const void* current,
+                         size_t currentSize, XV2FileOutput* output)
+{
+    (void)original;
+    (void)originalSize;
+    const DisplayEdit& edit = *static_cast<const DisplayEdit*>(user);
+    std::string note;
+    int outcome = -1;
+    try {
+        const auto* currentBytes = static_cast<const uint8_t*>(current);
+        xv2ui::DisplayReport report;
+        const Bytes written = xv2ui::ApplyDisplay(Bytes(currentBytes, currentBytes + currentSize), edit.commands, &report);
+        for (const std::string& line : report.notes) Log("uilib %s, %s: %s", path, edit.owner.c_str(), line.c_str());
+        note = report.Summary();
+        if (report.Changed()) {
+            output->Set(output, written.data(), written.size());
+            outcome = 1;
+        } else {
+            outcome = 0;
+        }
+    } catch (const std::exception& error) {
+        note = std::string("display edit failed: ") + error.what();
+    } catch (...) {
+        note = "display edit failed";
+    }
+    CopyOut(note, output->note, sizeof(output->note));
+    return outcome;
+}
+
+// Drops owner's live display edit of `key` (lock held). Returns it, or null.
+DisplayEdit* TakeLiveDisplay(const std::string& owner, const std::string& key)
+{
+    for (auto it = g_liveDisplayEdits.begin(); it != g_liveDisplayEdits.end(); ++it) {
+        if ((*it)->owner == owner && (*it)->key == key) {
+            DisplayEdit* edit = *it;
+            g_liveDisplayEdits.erase(it);
+            return edit;
+        }
+    }
+    return nullptr;
+}
+
+// Registers owner's display commands for the menu `path`, replacing its earlier
+// ones. The commands are parsed now: bad syntax is refused here. False with the reason.
+bool SetDisplay(const std::string& owner, const std::string& path, bool fromScript, const char* commands, int order,
+                std::string& reason)
+{
+    XV2Files* files = Files(reason);
+    if (!files) return false;
+    auto edit = std::make_unique<DisplayEdit>();
+    edit->owner = owner;
+    edit->path = path;
+    edit->key = PathKey(path);
+    edit->fromScript = fromScript;
+    try {
+        edit->commands = xv2ui::ParseDisplayCommands(commands);
+    } catch (const std::exception& error) {
+        reason = error.what();
+        return false;
+    }
+    DisplayEdit* stored = edit.get();
+    AcquireSRWLockExclusive(&g_editsLock);
+    g_displayEdits.push_back(std::move(edit));
+    ReleaseSRWLockExclusive(&g_editsLock);
+    char failure[256] = "";
+    if (!files->AddStage(StageOwner(stored->owner).c_str(), stored->path.c_str(), order, &DisplayStage, stored, failure,
+                         sizeof(failure))) {
+        reason = failure;
+        return false;
+    }
+    AcquireSRWLockExclusive(&g_editsLock);
+    TakeLiveDisplay(stored->owner, stored->key);
+    g_liveDisplayEdits.push_back(stored);
+    ReleaseSRWLockExclusive(&g_editsLock);
+    Log("uilib: %s edits the display list of %s (%zu command%s)", stored->owner.c_str(), stored->path.c_str(),
+        stored->commands.size(), stored->commands.size() == 1 ? "" : "s");
+    return true;
+}
+
+// Removes owner's edit of path (script, images, messages or display list). False when there was none.
 bool RemoveEdit(const char* owner, const char* path)
 {
     std::string reason;
@@ -496,8 +602,10 @@ bool RemoveEdit(const char* owner, const char* path)
     TakeLive(owner, PathKey(path));
     TakeLiveImages(owner, PathKey(path));
     TakeLiveMessages(owner, PathKey(path));
+    TakeLiveDisplay(owner, PathKey(path));
     ReleaseSRWLockExclusive(&g_editsLock);
-    return files->Remove(owner, path) != 0;
+    const bool removedDisplay = files->Remove(StageOwner(owner).c_str(), path) != 0;
+    return files->Remove(owner, path) != 0 || removedDisplay;
 }
 
 // F1 reload: every Lua script's edits go (the scripts register them again).
@@ -529,10 +637,21 @@ void ClearScriptEdits()
             ++it;
         }
     }
+    std::vector<std::pair<std::string, std::string>> removedDisplays;
+    for (auto it = g_liveDisplayEdits.begin(); it != g_liveDisplayEdits.end();) {
+        if ((*it)->fromScript) {
+            removedDisplays.emplace_back(StageOwner((*it)->owner), (*it)->path);
+            it = g_liveDisplayEdits.erase(it);
+        } else {
+            ++it;
+        }
+    }
     ReleaseSRWLockExclusive(&g_editsLock);
     std::string reason;
-    if (XV2Files* files = Files(reason))
+    if (XV2Files* files = Files(reason)) {
         for (const auto& edit : removed) files->Remove(edit.first.c_str(), edit.second.c_str());
+        for (const auto& edit : removedDisplays) files->Remove(edit.first.c_str(), edit.second.c_str());
+    }
 }
 
 // --- Lua ---------------------------------------------------------------------
@@ -674,10 +793,29 @@ int UiRemoveMessage(lua_State* L)
     return PushResult(L, removed, reason);
 }
 
+// uilib.edit_display(path, commands [, order]) -> true | false, reason
+//   path      the menu ("ui/iggy/AVATAR.iggy")
+//   commands  text, one command per line (formats\display_edit.h):
+//             clone <sprite> <source> <name> <dx> <dy>
+//             matrix <sprite> <target> <frame> <a> <b> <c> <d> <tx> <ty>
+//             (a value: a number, '*' keeps it, '+=<number>' adds to it)
+//   order     lower runs earlier (default 0)
+// Calling it again for the same path replaces your commands.
+int UiEditDisplay(lua_State* L)
+{
+    const std::string path = luaL_checkstring(L, 1);
+    const char* commands = luaL_checkstring(L, 2);
+    const int order = (int)luaL_optinteger(L, 3, 0);
+    std::string reason;
+    return PushResult(L, SetDisplay(ScriptName(L), path, true, commands, order, reason), reason);
+}
+
 void RegisterTable(lua_State* L)
 {
     static const luaL_Reg functions[] = {
         {"EditScript",    UiEditScript},
+        {"edit_display",  UiEditDisplay},
+        {"EditDisplay",   UiEditDisplay},
         {"Remove",        UiRemove},
         {"SetImage",      UiSetImage},
         {"RemoveImage",   UiRemoveImage},
@@ -722,6 +860,23 @@ extern "C" __declspec(dllexport) int XV2UI_EditScript(const char* owner, const c
             variant.base = Copy(base, baseSize);
             variant.game = Copy(game, gameSize);
             if (Register(owner, path, false, std::move(variant), order, failure)) return 1;
+        } catch (const std::exception& error) {
+            failure = error.what();
+        }
+    }
+    CopyOut(failure, reason, reasonBytes > 0 ? (size_t)reasonBytes : 0);
+    return 0;
+}
+
+extern "C" __declspec(dllexport) int XV2UI_EditDisplay(const char* owner, const char* path, const char* commands,
+                                                       int order, char* reason, int reasonBytes)
+{
+    std::string failure;
+    if (!owner || !*owner || !path || !*path || !commands) {
+        failure = "bad arguments (owner, path and commands are required)";
+    } else {
+        try {
+            if (SetDisplay(owner, path, false, commands, order, failure)) return 1;
         } catch (const std::exception& error) {
             failure = error.what();
         }

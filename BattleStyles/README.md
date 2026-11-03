@@ -1,6 +1,6 @@
 # Battle Styles
 
-**Version 1.1.0** · for Dragon Ball Xenoverse 2 **1.27** · needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
+**Version 1.1.1** · for Dragon Ball Xenoverse 2 **1.27** · needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
 
 Equipable movesets for created characters in Dragon Ball Xenoverse 2. A
 "Battle Style" changes a CaC's basic moves (attack strings, throw, guard,

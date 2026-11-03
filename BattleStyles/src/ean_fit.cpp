@@ -660,7 +660,7 @@ bool EanBoneUse(const uint8_t* data, size_t size, std::map<std::string, int>& an
 
 bool FitEanToRace(const uint8_t* styleData, size_t styleSize, const uint8_t* raceData, size_t raceSize, bool body,
                   int baseAnimations, std::vector<uint8_t>& out, EanFit& fit, std::string& note,
-                  const PropPlacement& back)
+                  const PropPlacement& back, bool styleOnly)
 {
     Reader styleFile{styleData, styleSize}, raceFile{raceData, raceSize};
     Ean style, race;
@@ -730,15 +730,16 @@ bool FitEanToRace(const uint8_t* styleData, size_t styleSize, const uint8_t* rac
     // Ids: the style's below the base replace the race's; its others go after
     // the race's last.
     int raceCount = (int)race.animations.size(), styleCount = (int)style.animations.size();
-    fit.shift = raceCount > baseAnimations ? raceCount - baseAnimations : 0;
+    const int raceSlots = styleOnly ? 0 : raceCount;
+    fit.shift = raceSlots > baseAnimations ? raceSlots - baseAnimations : 0;
     auto styleTarget = [&](int id) { return id < baseAnimations ? id : id + fit.shift; };
-    int total = raceCount;
+    int total = raceSlots;
     for (int id = 0; id < styleCount; ++id)
         if (style.animations[id].offset && styleTarget(id) + 1 > total) total = styleTarget(id) + 1;
     if (total > 0xffff) { note = "too many animations"; return false; }
     struct Slot { const Reader* file; const Animation* animation; bool fromStyle; };
     std::vector<Slot> slots(total, Slot{nullptr, nullptr, false});
-    for (int id = 0; id < raceCount; ++id)
+    for (int id = 0; id < raceSlots; ++id)
         if (race.animations[id].offset) slots[id] = {&raceFile, &race.animations[id], false};
     int styleAnimations = 0;
     for (int id = 0; id < styleCount; ++id)
@@ -750,7 +751,7 @@ bool FitEanToRace(const uint8_t* styleData, size_t styleSize, const uint8_t* rac
     // The race tail bones and, per race animation, their tracks (read when
     // first needed): donors for style animations without a tail.
     std::vector<int> tailBones;
-    if (body)
+    if (body && !styleOnly)
         for (size_t b = 0; b < race.bones.size(); ++b)
             if (IsTailBone(race.bones[b].name)) tailBones.push_back((int)b);
     std::map<int, std::map<int, std::vector<TailTrack>>> tailDonors;
@@ -846,6 +847,55 @@ bool FitEanToRace(const uint8_t* styleData, size_t styleSize, const uint8_t* rac
         snprintf(text, sizeof(text), "%d style + %d race animations, style ids %d+ moved up %d; %zu nodes dropped",
                  styleAnimations, raceKept, baseAnimations, fit.shift, stats.nodesDropped);
     note = text;
+    return true;
+}
+
+bool ComposeEan(const uint8_t* skillData, size_t skillSize, const uint8_t* carriedData, size_t carriedSize,
+                const std::vector<int>& ids, int base, std::vector<uint8_t>& out, std::string& note)
+{
+    Reader skillFile{skillData, skillSize}, carriedFile{carriedData, carriedSize};
+    Ean skill, carried;
+    if (skillSize && !ParseEan(skillFile, skill, note)) { note = "skill: " + note; return false; }
+    if (!ParseEan(carriedFile, carried, note)) { note = "carried: " + note; return false; }
+    const size_t total = std::max(skill.animations.size(), (size_t)base + ids.size());
+    if (total > 0xffff) { note = "too many animations"; return false; }
+    // The carried file stays whole: its skeleton (prop bones may have moved it
+    // to the end) and animation blocks are used in place, its tables are unused.
+    out.assign(carriedData, carriedData + carriedSize);
+    Align16(out);
+    const size_t animationTable = out.size();
+    out.resize(animationTable + 4 * total, 0);
+    std::vector<const Animation*> slots(total, nullptr);
+    for (size_t id = 0; id < skill.animations.size(); ++id) {
+        const Animation& animation = skill.animations[id];
+        if (!animation.offset) continue;
+        // keep the source's offset mod 16, see FitEanToRace
+        out.resize(out.size() + (((animation.offset & 15) - out.size()) & 15), 0);
+        Store<int32_t>(out, animationTable + 4 * id, (int32_t)out.size());
+        out.insert(out.end(), skillData + animation.offset, skillData + animation.offset + animation.length);
+        slots[id] = &animation;
+    }
+    for (size_t k = 0; k < ids.size(); ++k) {
+        if (ids[k] < 0 || ids[k] >= (int)carried.animations.size() || !carried.animations[ids[k]].offset) {
+            note = "carried animation " + std::to_string(ids[k]) + " missing";
+            return false;
+        }
+        const Animation& animation = carried.animations[ids[k]];
+        Store<int32_t>(out, animationTable + 4 * (base + k), (int32_t)animation.offset);
+        slots[base + k] = &animation;
+    }
+    Align16(out);
+    const size_t nameTable = out.size();
+    out.resize(nameTable + 4 * total, 0);
+    for (size_t id = 0; id < total; ++id) {
+        if (!slots[id]) continue;
+        Store<int32_t>(out, nameTable + 4 * id, (int32_t)out.size());
+        out.insert(out.end(), slots[id]->name.begin(), slots[id]->name.end());
+        out.push_back(0);
+    }
+    Store<uint16_t>(out, 18, (uint16_t)total);
+    Store<int32_t>(out, 24, (int32_t)animationTable);
+    Store<int32_t>(out, 28, (int32_t)nameTable);
     return true;
 }
 

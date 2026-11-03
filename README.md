@@ -6,8 +6,7 @@ Mods for Dragon Ball Xenoverse 2 (**game version 1.27**), built around a small
 mod loader. Each folder is its own project with a README that explains what
 it does and how to install it.
 
-Tested primarily with XV2Patcher 4.7 and Revamp 5.1.1, on game 1.26.01 and
-then 1.27 (the current releases are for 1.27 only).
+Tested primarily with XV2Patcher 4.7 and Revamp 5.1.1, on game 1.27
 
 ## Installing
 
@@ -19,15 +18,16 @@ packages are on the [Releases](../../releases) page.
 
 | Mod | Version | Game | What it does |
 |---|---|---|---|
-| [XV2 Mod Loader](XV2ModLoader/README.md) | 1.1.0 | 1.27 | Loads DLL mods and Lua scripts from their own folders; an in-game menu; launchers for modded/unmodded play |
-| [Battle Styles](BattleStyles/README.md) | 1.1.0 | 1.27 | Equipable movesets for created characters |
+| [XV2 Mod Loader](XV2ModLoader/README.md) | 1.2.0 | 1.27 | Loads DLL mods and Lua scripts from their own folders; an in-game menu; launchers for modded/unmodded play |
+| [Battle Styles](BattleStyles/README.md) | 1.1.1 | 1.27 | Equipable movesets for created characters |
 | [Chara Search](CharaSearch/README.md) | 1.1.0 | 1.27 | Search and favorites in the character select |
 | [Combined Super Stats](CombinedSupers/README.md) | 1.1.0 | 1.27 | Supers and ultimates scale off Strike + Ki Blast Supers combined |
 | [Debug Menu](DebugMenu/README.md) | 1.0.1 | 1.27 | Noclip and an item getter in the loader's menu |
 | [Effect Texture Limit](EffectTextureLimit/README.md) | 1.1.1 | 1.27 | Effect texture files can hold 255 textures instead of 128 |
 | [General QoL](General_QoL/README.md) | 1.1.0 | 1.27 | Unlocks and quality-of-life changes, each switchable |
 | [Item Search](ItemSearch/README.md) | 1.1.0 | 1.27 | A search box over the item lists |
-| [Multi Accessory](MultiAccessory/README.md) | 1.0.0 | 1.27 | Up to two extra accessories per created character |
+| [Ki Blast Override](KiBlastOverride/README.md) | 0.1.0 | 1.27 | Choose a created character's charged ki blast, whatever the super soul |
+| [Multi Accessory](MultiAccessory/README.md) | 1.1.0 | 1.27 | Up to two extra accessories per created character |
 | [SaveSync](SaveSync/README.md) | 1.1.0 | 1.27 | Shares unlock progress between your created characters |
 | [Training QoL](Training_QoL/README.md) | 1.1.0 | 1.27 | In Training, control the partner (D-pad up) or use the photo camera (D-pad down) |
 
@@ -46,7 +46,7 @@ are named `<Mod>-<version>-XV2_<game version>.zip` (for example
 Public domain ([The Unlicense](LICENSE)): use any of it for anything.
 Bundled third-party code keeps its own licence (listed in [LICENSE](LICENSE)).
 
-Feel free to do whatever you want with this without giving me credit. In fact, DO NOT give me any credit. I make real code, and this is not that and is just kind of for funsies.
+Feel free to do whatever you want with this without giving me credit. In fact, DO NOT give me any credit. I make real code, and this is mostly not that and is just kind of for funsies.
 
 ## Credits
 

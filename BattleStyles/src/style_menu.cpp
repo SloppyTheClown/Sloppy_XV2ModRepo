@@ -1029,6 +1029,15 @@ static int RegisterMenuEdits(bool search, int& wanted)
     int registered = 0;
     for (const MenuEdit* edit : edits)
         if (edit && RegisterMenuEdit(ui, *edit)) ++registered;
+    // One more row of box on the Skills page for the Battle Style row: frame 5
+    // (ModeFrameInfoList) scales the 512 px _CMN_M_B_plt_win01 by 0.82224; one
+    // row is 34 px = 34/512 of it. Relative, so each mod with a row adds its own.
+    // Optional: an older UI library has no display edits.
+    if (ui.EditDisplay) {
+        char reason[256] = {};
+        if (!ui.EditDisplay(kUiOwner, "ui/iggy/AVATAR.iggy", "matrix editmenu @1 5 * * * +=0.06641 * *\n", 0, reason, sizeof(reason)))
+            Log("AVATAR.iggy: box edit refused: %s", reason);
+    }
     return registered;
 }
 
@@ -1036,14 +1045,19 @@ static int RegisterMenuEdits(bool search, int& wanted)
 // so its script splits off a style appended to a string (the vanilla one
 // would show the tab and the name) or redraws the list. The loader's status
 // for the file is "served: ..." with one patch, or "owner: outcome; owner:
-// outcome" with several.
+// outcome" with several. "unchanged: no changes" means an earlier stage already
+// served the same edit (another mod registers the same AVATAR_LIST script), so
+// the served copy has ours in it too.
 static bool MenuEdited(const MenuEdit& edit)
 {
     std::string status = GamePatchStatus(edit.path);
     if (status.compare(0, 7, "served:") == 0) return GamePatchOwner(edit.path) == kUiOwner;
-    std::string ours = std::string(kUiOwner) + ": served:";
-    size_t at = status.find(ours);
-    return at != std::string::npos && (at == 0 || (at >= 2 && status.compare(at - 2, 2, "; ") == 0));
+    auto hasOutcome = [&status](const std::string& outcome) {
+        size_t at = status.find(outcome);
+        return at != std::string::npos && (at == 0 || (at >= 2 && status.compare(at - 2, 2, "; ") == 0));
+    };
+    if (hasOutcome(std::string(kUiOwner) + ": served:")) return true;
+    return status.find(": served:") != std::string::npos && hasOutcome(std::string(kUiOwner) + ": unchanged: no changes");
 }
 
 // ------------------------------------------------------- the equip menu ---
@@ -1957,7 +1971,9 @@ void StyleMenu_InstallDataHooks(bool search)
 void StyleMenu_InstallCodeHooks()
 {
     bool slotsOk = WaitForCode(kSlotCountCode, kSlotCountCodeBytes, sizeof(kSlotCountCodeBytes)) && RaiseSlotCount();
-    bool listOk = WaitForCode(kListCtorCheck, kListCtorCheckCode, sizeof(kListCtorCheckCode))
+    // Waits for the code before the jne only: Ki Blast Override nops the same
+    // jne, and may do it first (waiting for it too stalled every hook below).
+    bool listOk = WaitForCode(kListCtorCheck, kListCtorCheckCode, sizeof(kListCtorCheckCode) - sizeof(kListCtorAlways))
                   && PatchCode(kListCtorSkip, kListCtorAlways, sizeof(kListCtorAlways));
     // Hooks are tried once: a hook must never go in twice.
     if (WaitForCode(kListPoll, kListPollCode, sizeof(kListPollCode)))

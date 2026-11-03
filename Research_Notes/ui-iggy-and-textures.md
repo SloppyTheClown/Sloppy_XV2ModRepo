@@ -7,6 +7,7 @@ bridge's texture renumbering (revamp-on-1.26.md). Game 1.26.01.
 
 Moved to their own files (2026-10-22):
 * `ui-item-lists.md`: Item lists (Menu::ItemList)
+* `ui-iggy-display-list.md`: sprite timelines (PlaceObject records), adding a button / resizing a box by display-list edit
 * `ui-menu-screens.md`: Lobby map (LOBYHUD.iggy, classes LobbyHUD / LobbyMap); Stat radar chart (CMN_CHART.iggy, class _CMN_CHART); Attributes screen: one script, two mods
 
 ## Menu titles

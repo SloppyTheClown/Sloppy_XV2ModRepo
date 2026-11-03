@@ -52,11 +52,21 @@ struct EanFit {
 //   (PropBonePositionScale), so the prop meshes prop_fit.cpp hangs on them
 //   move as in the style character's hands; `back` places the ones carried
 //   on the back by depth (prop_fit.h PropPlacement; default: arm ratio only).
+// `styleOnly`: the file holds only the style's animations, at their own ids, on
+// the race skeleton, and no race tail: a skill EAN like the game's own CMN ones
+// (Ki Blast Override's conversion of a roster blast).
 // Returns false (out untouched) when either file is not an EAN it
 // understands; `note` says what was done or why not.
 bool FitEanToRace(const uint8_t* style, size_t styleSize, const uint8_t* race, size_t raceSize, bool body,
                   int baseAnimations, std::vector<uint8_t>& out, EanFit& fit, std::string& note,
-                  const PropPlacement& back = {});
+                  const PropPlacement& back = {}, bool styleOnly = false);
+
+// One EAN from two on the same race skeleton (both FitEanToRace results; bone
+// indexes match, `carried` may have prop bones after the race's): the animations
+// of `skill` at their own ids, `carried`'s ids[k] at base + k. `skill` may be
+// empty. Used to give a skill EAN a character's own animations (Ki Blast Override).
+bool ComposeEan(const uint8_t* skill, size_t skillSize, const uint8_t* carried, size_t carriedSize,
+                const std::vector<int>& ids, int base, std::vector<uint8_t>& out, std::string& note);
 
 // Per bone name of an EAN's skeleton: in how many of its animations a track
 // moves that bone; `animations` = the animations the file holds. Used to tell

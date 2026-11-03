@@ -50,6 +50,7 @@
 #include <windows.h>
 #include <intrin.h>
 #include "avatar_abc.h"
+#include "myset_abc.h"
 #include "default_config.h"
 #include "xv2_ui.h"
 #include <atomic>
@@ -310,6 +311,27 @@ constexpr uintptr_t kEditMysetVtableRva = 0x10af228;
 constexpr int kUserCallbackSlot = 17;
 constexpr size_t kCallArgCount = 0x10, kCallArg0 = 0x28, kCallArg1 = 0x48;
 constexpr int kMysetLoad = 2, kMysetSave = 3;
+// sendType 0 = fill the panel from preset n: 0x5071f0 sets user data 2..8 to the
+// equipment names, the accessory is 2 + 4 (CostumeItemArray). 9100 = ours,
+// as3\AvatarMyset.as is the script that reads the appended extras.
+constexpr int kMysetRequestEquip = 0, kMysetScriptReady = 9100;
+constexpr int kMysetUserDataAccessory = 6;
+// OggyBase user-data vector (+0x160 begin, +0x168 end): 16-byte entries
+// {int set, int type, value}; SetUserDataStr (0x2c8340) stores type 6 + pointer.
+constexpr size_t kUserDataBegin = 0x160, kUserDataEnd = 0x168, kUserDataEntrySize = 16;
+constexpr size_t kUserDataType = 4, kUserDataValue = 8;
+constexpr int kUserDataTypeWideString = 6;
+// 0x507070(menu, wstring *out, type, id): what 0x507840 calls for the panel's
+// equipment names; sets up `out` itself, id < 0 gives the game's "none" text.
+constexpr uintptr_t kPresetItemTextRva = 0x507070;
+constexpr size_t kGameWstringSize = 0x20; // MSVC: +0x10 size, +0x18 capacity
+// Raw IDB files: 0x86aa60([0x1568308], file) as in 0x61aa00, whose table maps
+// item type 4 to file 6. +8 count, +0xc first record, records of 0x310 with
+// the u16 id at +0 (0x85f180) and MODEL at +0x30 (0x61af70).
+constexpr uintptr_t kIdbManagerRva = 0x1568308, kIdbFileRva = 0x86aa60;
+constexpr int kIdbFileAccessory = 6;
+constexpr size_t kIdbCount = 8, kIdbFirstRecord = 0xc, kIdbRecordSize = 0x310, kIdbRecordModel = 0x30;
+constexpr uint32_t kIdbFirstRecordMin = 0x10; // 0x85f180 treats less as no records
 
 // The loaded save's decrypted image is kept by the save/system singleton
 // [0x15681a8] at +0x68: "#SAV", then the owning Steam id at +8 XORed with
@@ -430,6 +452,8 @@ using GameModeFn = int(__fastcall *)(void *owner);
 using LobbyCharaChangedFn = int(__fastcall *)(void *chara);
 using SetUserDataIntFn = void(__fastcall *)(void *menu, int index, int value);
 using SetUserDataStrFn = void(__fastcall *)(void *menu, int index, const wchar_t *text);
+using PresetItemTextFn = void *(__fastcall *)(void *menu, void *outWstring, int itemType, int itemId);
+using IdbFileFn = const uint8_t *(__fastcall *)(void *idbManager, int file);
 
 uintptr_t g_exe = 0;
 std::wstring g_modDir;
@@ -1692,15 +1716,24 @@ void *__fastcall BuildLoadoutHook(void *character, void *out, int preset)
 }
 
 // Presets panel: after the game loads or saves a preset, copy the extras.
+// When it requests a preset's equipment: add the extras to the accessory text.
+void AppendPresetExtras(void *menu, int preset);
+bool g_mysetScriptReady = false; // as3\AvatarMyset.as said it reads the extras
+
 void __fastcall MysetCallbackHook(void *menu, const uint8_t *call)
 {
-    g_mysetCallback(menu, call);
     void *args = const_cast<uint8_t *>(call);
-    if (Field<int>(args, kCallArgCount) < 2) return;
-    int sendType = static_cast<int>(Field<double>(args, kCallArg0));
-    int preset = static_cast<int>(Field<double>(args, kCallArg1));
+    const bool hasArgs = Field<int>(args, kCallArgCount) >= 2;
+    const int sendType = hasArgs ? static_cast<int>(Field<double>(args, kCallArg0)) : -1;
+    const int preset = hasArgs ? static_cast<int>(Field<double>(args, kCallArg1)) : -1;
+    if (sendType == kMysetScriptReady) { // ours; the game has no such sendType
+        g_mysetScriptReady = true;
+        return;
+    }
+    g_mysetCallback(menu, call);
     if (sendType == kMysetLoad) CopyPreset(preset, kMainPreset);
     else if (sendType == kMysetSave) CopyPreset(kMainPreset, preset);
+    else if (sendType == kMysetRequestEquip && g_mysetScriptReady) AppendPresetExtras(menu, preset);
 }
 
 // Chains a vtable slot (.rdata: no DRM wait). Another mod may have hooked it
@@ -1747,6 +1780,74 @@ int MenuAccessoryId(void *menu, int index)
 int AccessoryPartSet(int itemId)
 {
     return itemId < 0 ? -1 : reinterpret_cast<ItemPartSetFn>(g_exe + kItemPartSetRva)(kItemTypeAccessory, itemId);
+}
+
+// The IDB item id that draws a part set, or -1. Picks are saved as part sets;
+// items sharing a model give the first one's name.
+int AccessoryItemOfPartSet(int partSet)
+{
+    void *idbManager = *reinterpret_cast<void **>(g_exe + kIdbManagerRva);
+    const uint8_t *file = idbManager ? reinterpret_cast<IdbFileFn>(g_exe + kIdbFileRva)(idbManager, kIdbFileAccessory) : nullptr;
+    if (!file) return -1;
+    const int count = *reinterpret_cast<const int *>(file + kIdbCount);
+    const uint32_t first = *reinterpret_cast<const uint32_t *>(file + kIdbFirstRecord);
+    if (first < kIdbFirstRecordMin) return -1;
+    for (int i = 0; i < count; i++) {
+        const uint8_t *record = file + first + static_cast<size_t>(i) * kIdbRecordSize;
+        if (*reinterpret_cast<const int *>(record + kIdbRecordModel) != partSet) continue;
+        const int itemId = *reinterpret_cast<const uint16_t *>(record);
+        return AccessoryPartSet(itemId) == partSet ? itemId : -1; // checks this layout against the game's own getter
+    }
+    return -1;
+}
+
+// The Presets panel's text for an accessory (-1: the game's "none" text), the
+// game's own as on its Accessory row. The game's function builds a std::wstring
+// in the buffer with the game's allocator, so a long name's heap block stays
+// with it; each id is asked for once and kept.
+const std::wstring &PresetItemText(void *menu, int itemId)
+{
+    static std::map<int, std::wstring> texts;
+    auto found = texts.find(itemId);
+    if (found != texts.end()) return found->second;
+    alignas(8) uint8_t buffer[kGameWstringSize];
+    reinterpret_cast<PresetItemTextFn>(g_exe + kPresetItemTextRva)(menu, buffer, kItemTypeAccessory, itemId);
+    const size_t length = *reinterpret_cast<size_t *>(buffer + 0x10);
+    const bool onHeap = *reinterpret_cast<size_t *>(buffer + 0x18) >= 8;
+    const wchar_t *text = onHeap ? *reinterpret_cast<const wchar_t **>(buffer) : reinterpret_cast<const wchar_t *>(buffer);
+    return texts.emplace(itemId, std::wstring(text, length)).first->second;
+}
+
+// The string in a menu's user-data slot, empty when it holds none (0x2c8340
+// stores type 6 and the pointer in a 16-byte entry; same read as Battle Styles).
+std::wstring UserDataString(void *menu, int index)
+{
+    auto *begin = Field<uint8_t *>(menu, kUserDataBegin), *end = Field<uint8_t *>(menu, kUserDataEnd);
+    if (!begin || index < 0 || index >= (end - begin) / static_cast<ptrdiff_t>(kUserDataEntrySize)) return {};
+    const uint8_t *entry = begin + index * kUserDataEntrySize;
+    const wchar_t *text = *reinterpret_cast<const wchar_t *const *>(entry + kUserDataValue);
+    if (*reinterpret_cast<const int *>(entry + kUserDataType) != kUserDataTypeWideString || !text) return {};
+    return std::wstring(text, wcsnlen(text, 1024));
+}
+
+// Appends "\t<extra 1>\t<extra 2>" to the preset's accessory text;
+// as3\AvatarMyset.as shows them on its rows. The game keeps the pointer, so
+// the strings are never freed; each distinct text is kept once.
+void AppendPresetExtras(void *menu, int preset)
+{
+    static std::set<std::wstring> kept;
+    if (preset < 0 || preset >= kPresetCount) return;
+    std::vector<int> picked = PickedExtras(CurrentSlot(), preset);
+    std::wstring text = UserDataString(menu, kMysetUserDataAccessory);
+    for (size_t c = 0; c < kMaxExtras; c++) {
+        const int partSet = c < picked.size() ? picked[c] : -1;
+        const int itemId = partSet < 0 ? -1 : AccessoryItemOfPartSet(partSet);
+        text += L"\t";
+        text += partSet >= 0 && itemId < 0 ? L"#" + std::to_wstring(partSet) : PresetItemText(menu, itemId);
+    }
+    auto added = kept.insert(text);
+    if (added.second) Log("Presets panel: preset %d accessory text \"%ls\"", preset, text.c_str());
+    reinterpret_cast<SetUserDataStrFn>(g_exe + kSetUserDataStrRva)(menu, kMysetUserDataAccessory, added.first->c_str());
 }
 
 // The list entry that draws a part set (-1 = the "none" entry), or -1.
@@ -2033,6 +2134,20 @@ bool RegisterAvatarEdit()
     return false;
 }
 
+// Hands as3\AvatarMyset.as (the Presets panel's rows) to the same library,
+// which merges it with Battle Styles' row.
+bool RegisterPresetsEdit()
+{
+    XV2UI ui;
+    if (!ui.Load()) return false; // RegisterAvatarEdit logged it
+    char reason[256] = {};
+    if (ui.EditScript("MultiAccessory", "ui/iggy/AVATAR_SET.iggy", kMaMysetAbc, sizeof(kMaMysetAbc), kMaMysetBaseAbc,
+                      sizeof(kMaMysetBaseAbc), kMaMysetGameAbc, sizeof(kMaMysetGameAbc), 0, reason, sizeof(reason)))
+        return true;
+    Log("AVATAR_SET.iggy: NOT patched - no extra accessories in the Presets panel: %s", reason);
+    return false;
+}
+
 // --- Install -------------------------------------------------------------------
 
 // Every RVA in this file is for game 1.27 (PE TimeDateStamp + SizeOfImage);
@@ -2126,6 +2241,7 @@ DWORD WINAPI Start(LPVOID)
     }
     Log("Presets panel callback: %s", ChainUserCallback(kEditMysetVtableRva, &MysetCallbackHook, g_mysetCallback)
                                           ? "hooked" : "NOT hooked - presets don't copy extras");
+    Log("Presets panel rows: AVATAR_SET edit %s", RegisterPresetsEdit() ? "registered" : "NOT registered");
     bool menuEdited = RegisterAvatarEdit();
     bool rowHooked = ChainUserCallback(kEditCharaVtableRva, &EditCharaCallbackHook, g_editCharaCallback);
     Log("equip screen row: AVATAR edit %s, callback %s", menuEdited ? "registered" : "NOT registered",

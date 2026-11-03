@@ -1,6 +1,6 @@
 # Multi Accessory
 
-**Version 1.0.0** · for Dragon Ball Xenoverse 2 **1.27** · needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
+**Version 1.1.0** · for Dragon Ball Xenoverse 2 **1.27** · needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
 
 An XV2 Mod Loader mod that lets a created character (CaC) wear up to two
 extra accessories on top of the one equipped in the game, for example a hat
@@ -36,6 +36,9 @@ game's own accessory and two extras. Each extra box opens the accessory
 list to pick an accessory for it. Picks are
 saved per save slot and per preset in `multi_accessory.sav` next to the
 DLL.
+
+Saving or loading a preset in the lobby's Presets panel saves or loads its
+extras too, and the panel lists them as "Accessory 2" and "Accessory 3".
 
 ## Settings
 

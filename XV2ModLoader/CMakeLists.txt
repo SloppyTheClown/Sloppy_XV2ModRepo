@@ -67,7 +67,7 @@ endif()
 # its AS3 script, .iggytex/.iggyted, .emb) and merges several mods' changes
 # to one file. The formats are a static library shared by the DLL and the
 # offline checker xv2ui.exe (UILib/tool).
-file(GLOB UI_FORMAT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/UILib/src/formats/*.cpp)
+file(GLOB UI_FORMAT_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/UILib/src/formats/*.cpp)
 add_library(xv2ui_formats STATIC ${UI_FORMAT_SOURCES})
 add_executable(xv2ui UILib/tool/xv2ui.cpp)
 target_link_libraries(xv2ui PRIVATE xv2ui_formats)

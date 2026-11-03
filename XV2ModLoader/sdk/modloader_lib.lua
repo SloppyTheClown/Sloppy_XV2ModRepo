@@ -458,7 +458,20 @@ uilib = {}
 ---@return string? reason why it was refused
 function uilib.EditScript(path, abcFile, baseFile, gameFile, order) end
 
---- Removes this script's edit of `path` (its script, or all its images or entries).
+--- Edits the display list (sprite placements) of the .iggy menu `path`, one
+--- command per line, '#' starts a comment (your earlier commands for the path
+--- are replaced; the menu script edit is separate):
+---   clone <sprite> <source> <name> <dx> <dy>   a copy of <source>'s placements as <name>, shifted; no-op when <name> exists
+---   matrix <sprite> <target> <frame> <a> <b> <c> <d> <tx> <ty>   set a placement's matrix in a frame ('*' keeps a value, '+=<n>' adds to it)
+--- <sprite> is a placement's instance name ("edit_menu") or "#<id>"; <source>/<target> a placement name or "@<depth>".
+---@param path string the menu ("ui/iggy/AVATAR.iggy")
+---@param commands string
+---@param order? integer lower runs earlier (default 0)
+---@return boolean registered
+---@return string? reason why it was refused
+function uilib.edit_display(path, commands, order) end
+
+--- Removes this script's edit of `path` (its script, display list, or all its images or entries).
 ---@param path string
 ---@return boolean removed
 function uilib.Remove(path) end

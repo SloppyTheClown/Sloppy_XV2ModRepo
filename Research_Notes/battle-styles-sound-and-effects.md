@@ -36,7 +36,7 @@ battle-styles-fit.md; ACB format: sound.md "Merging two banks".
   0x16c53a `45 33 c0 48 8d 55 c7 48 8b cb e8 b7 78 fa ff`) and 0x16c873
   (0x16c868 `45 33 c0 48 8d 54 24 40 49 8b ce e8 88 75 fa ff`). After it,
   for a styled CaC the mod registers the style's character EEPK like the
-  loader does at 0x16c821: 0x9644b0(*(base+0x1568368), 2, style chara, 0, 1,
+  awoken form load does at 0x16c821: 0x9644b0(*(base+0x1568368), 2, style chara, 0, 1,
   1) (entry `48 8b c4 57 41 54 41 55 41 56 41 57`; it looks an id up first,
   0x965220), once per player and style, and remembers the holder.
 * **Effect owner:** Battle::MobVfxOwner vtable 0xf6bf08 slot 14 (rva

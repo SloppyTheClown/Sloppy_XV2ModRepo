@@ -23,6 +23,8 @@
 // Texture files (.iggytex / .iggyted / .emb) go per image: SetImage
 // replaces or adds one image, other mods' images of the file apply too.
 // Text files (.msg) go per entry the same way: SetMessage.
+// A menu's timeline can be edited too: EditDisplay clones a sprite's placement
+// (one more button) and sets a placement's matrix in a frame.
 // Status: the loader's XV2Files::Status (sdk\xv2_files.h) for the menu,
 // e.g. "MyMod: served: 3 changed (1 merged with an earlier edit), ...".
 #pragma once
@@ -55,7 +57,7 @@ struct XV2UI {
                       size_t baseSize, const void* game, size_t gameSize, int order, char* reason,
                       int reasonBytes) = nullptr;
 
-    // Removes `owner`'s edit of `path` (its script, or all its images or entries).
+    // Removes `owner`'s edit of `path` (its script, display list, or all its images or entries).
     // Returns 1 when there was one.
     int (*Remove)(const char* owner, const char* path) = nullptr;
 
@@ -97,6 +99,29 @@ struct XV2UI {
     // Null with an older library.
     int (*RemoveMessage)(const char* owner, const char* path, const char* name) = nullptr;
 
+    // Edits the display list (the sprites' placements) of the .iggy menu at
+    // `path`. Your commands replace your earlier ones for the path (they are
+    // independent of EditScript's script edit); other mods' edits apply too.
+    // Null with an older library.
+    //   commands  text, one command per line, '#' starts a comment:
+    //     clone  <sprite> <source> <name> <dx> <dy>
+    //         adds a placement <name> to <sprite>: a copy of everything placed
+    //         at <source>'s depth (with its later moves), shifted by (dx, dy),
+    //         on a new depth. Nothing happens when <sprite> already has a
+    //         placement <name> (so it can be registered every start).
+    //     matrix <sprite> <target> <frame> <a> <b> <c> <d> <tx> <ty>
+    //         sets <target>'s matrix in <frame> of <sprite>; '*' keeps a value.
+    //     <sprite>: the instance name a placement gives the sprite
+    //     ("edit_menu"; all placements of that name must be the same sprite)
+    //     or "#<character id>"; <source>/<target>: a placement name inside
+    //     the sprite, or "@<depth>"; <frame>: 1-based number or frame label.
+    //     Refused: bad syntax (reason set). A command that can't be applied to
+    //     the menu is reported in XV2Files::Status when the menu loads.
+    //   order     lower runs earlier (0 = usual)
+    // Returns 1 when registered, 0 when refused (reason set). Remove drops it.
+    int (*EditDisplay)(const char* owner, const char* path, const char* commands, int order, char* reason,
+                       int reasonBytes) = nullptr;
+
     // Finds the functions. False without the library (or an older one).
     bool Load()
     {
@@ -114,6 +139,7 @@ struct XV2UI {
         RemoveImage = reinterpret_cast<decltype(RemoveImage)>(GetProcAddress(library, "XV2UI_RemoveImage"));
         SetMessage = reinterpret_cast<decltype(SetMessage)>(GetProcAddress(library, "XV2UI_SetMessage"));
         RemoveMessage = reinterpret_cast<decltype(RemoveMessage)>(GetProcAddress(library, "XV2UI_RemoveMessage"));
+        EditDisplay = reinterpret_cast<decltype(EditDisplay)>(GetProcAddress(library, "XV2UI_EditDisplay"));
         return found;
     }
 };

@@ -2,6 +2,13 @@
 
 The version is in `VERSION`; it goes up with every release.
 
+## 1.1.1 - 2026-11-02
+
+* The Battle Style row and hooks no longer stall for minutes at start-up when
+  another mod (Ki Blast Override) has already made the same list patch.
+* With XV2 Mod Loader 1.2.0 or newer, the Skills page's box grows by one row
+  for the Battle Style row.
+
 ## 1.1.0 - 2026-10-31
 
 * For game version 1.27 (was 1.26.01). Needs XV2 Mod Loader 1.1.0 or newer.
