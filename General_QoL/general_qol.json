@@ -1,13 +1,13 @@
 {
     "enabled": true,
 
-    "unlock_teleports": false,
+    "unlock_teleports": true,
     "unlock_flight": true,
     "lobby_flight_speed": 2.5,
     "clear_story_flags": false,
-    "unlock_all_parallel_quests": true,
-    "unlock_all_expert_missions": true,
-    "unlock_level_cap": true,
+    "unlock_all_parallel_quests": false,
+    "unlock_all_expert_missions": false,
+    "unlock_level_cap": false,
     "tp_shop_all_seasons": true,
     "mentor_names_on_map": true,
     "free_attribute_points": true,

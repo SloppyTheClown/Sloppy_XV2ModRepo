@@ -127,6 +127,16 @@ Tools > Optimize Textures, back up vfx\cmn first.
   game 2026-10-18; not seen in game yet.
 
 ## Refinement's pink aura (2026-10-19) - a recoloured copy of a game aura
+2.4 (seen in game) stops installing all of this as an aura, to keep CUS aura 14 and its hard-coded guard (awoken-skills.md "Kid Buu's guard"): the aura value picks both the guard and the aura the engine draws. The package's HenshinStart copy is now a skill eepk effect (109), started by the skill's BAC at the end of the intro and stopped in its revert entry. Guard, manual and forced revert work; a forced revert doesn't leave it running. The effect does disappear on jumping. The rest of this section is how 1.3-2.3 did it.
+Stopping effects (seen in game, 2.5): a skill eepk effect ends on both jumps, though the jump entries have no event that stops it and none of its parts has OnGroundOnly. MAP_PLAYER entry 24's `Common 0 41 Off` isn't the cause: removing it changed nothing, and it's not in the directional jumps. Cause unknown; engine side not read. Function 6 (Invisibility) lasts for its event's Duration (MAP_PLAYER entry 44: 0+1, 2+1, 4+1, 6+43). No vanilla after BAC (001 kin, 002 gnt, 003 gld, 030, 031, 1350, 2020) has a skill eepk effect; 2.6 tried `Skill_ID 0, Use_Skill_ID False` in one: nothing happened.
+
+Quieter aur slot for one skill (Refinement 2.13, seen in game): an aur row is shared by everything drawing it, so don't edit the row. Drop the BAC `Aura` event and run a thinned copy of the slot's effect from the skill eepk over the same frames (`RefinementAura.exe thineffect`). EEPK `Deactivation`: Never 0, Immediate 1, LoopCancel 2. In XenoKit's `VfxAsset.Terminate`, LoopCancel on a particle or Tbind part stops emitting and lets particles finish, and other asset types end at once; an Off + Default restart on LoopCancel parts should overlap rather than pop (assumed the same in game).
+
+EEPK part orientation (seen in game, Refinement 2.13): the serializer's `RotateOnMovement` is byte +4, `Orientation`. None ignores the bone's rotation (both arms' vents shared one world direction); AttachmentBone makes a part follow the bone, as XenoKit's `VfxAsset.GetAdjustedTransform` reads it.
+
+BAC effect event type resolution (game 1.27, handler 0xf9240-0xf98a4): EepkType 3 (AwokenSkill) goes through the skill record in use (0xeea10, from chara+0x364, -1 outside a skill = null). The record's +0xd low nibble n picks the type (0/1 -> 5, n -> n+4, so n=6 -> 12 = NEW_AwokenSkill) and word +0xA (ID2) the id. Vanilla Purification: +0xd = 0xf6, ID2 4 -> (12, 4). With no skill in use, type 3 spawns (3, event id), which finds nothing: that's why a type 3 effect in an after BAC is silent while the transformed character isn't using a skill. Other types take the id straight from the event's dword at +0xc (Skill_ID u16 + Use_Skill_ID u16, so Use_Skill_ID must be True = 0). So an after BAC must name type 12 and the real ID2. LB rewrites the neutral id 0xBACA only in the BACs of a SkillDir, so such an after BAC must sit in the skill's own folder, and the CUS path then needs a known folder: `AutoSkillID=(Awoken; alias; <CMS>)` fixes the parent, and `{GetAlias=alias, Format=3}_<CMS>_<short>` builds the name. SpawnEffect 0x965080(manager 0x1568368, request, type, id, flags): flag bit 1 (Off) -> lookup 0x9652f0 + stop 0x968cf0, else start 0x9693b0. Refinement 2.7 restarts its aura this way; not yet seen in game. The engine's own stop on jumping wasn't found.
+Looping body outline from a BAC (scan of every vanilla BAC: `ClaudeTools\refinement\bac_screeneffect_scan.py`): a ScreenEffect (type 16) on a BPE with I_00=1, Duration 1; start I_14 0 or 1, stop = same id with 0x2 (DisableEffect) added, also in another entry of the skill (2070_fit_cor 1 -> 5) and often at frame 0. Vanilla looping pink: 302 (0.43,0,0.157)-(0.51,0,0.196) a0.4, 320/350/371 darker. Vanilla's looping pairs with a stop use start 0x1, stop 0x3 (sim_player 282, 2122_sim_mba 0, 2120_sim_dra 0); 0x1's meaning unknown. 302 at a0.4 F_32 0.04 with start 0 before Function 13 (frame 275) showed no outline on a transformed Majin (2.5, seen in game); vanilla transformations stop their outlines before Function 13 (030_god_sgm BPE 274, 2020_fod_sfm BPE 284). Not yet known which of these was the cause.
+2.0 (seen in game, colour kept): the smoke is white/grey, no longer pink; colours map to grey of the same brightness (`ToSmokeGrey`, `LightToSmokeGrey`, replacing the `ToLightPink` named below) and the package's saturation is -1 (HueAdjust adds saturation and clamps at 0). The outline stays pink. Particles keep their size on a small body, so a female Majin got thick, glaring smoke; 2.1 (not yet seen in game) multiplies colour and light brightness by `SmokeBrightness` 0.7 and particle transparency (`Color1/2_Transparency`) by `SmokeOpacity` 0.55.
 How a skill's aura is chosen: CUS skill `CUS_Aura` (a CUS aura id) ->
 XV2Patcher's `data\pre-baked.xml` `<CusAuraData cus_aura_id aur_aura_id>`
 (+ behaviour flags; installed copy on the PC for cus 14: BEHAVIOUR_11/10/13/64
@@ -188,7 +198,7 @@ effect ids) -> `vfx\cmn\BTL_AURA.eepk` effects. Purification = cus/aur aura 14
   Refinement 1.8); full-strength colours like (1, 0, 0.5) work as well as
   the tiny Ultra Instinct values.
 * Behaviour flags 64/66 (0xe / 14 in cus aura 14) were guessed to be the
-  Evil body tint; 1.4 sets them to 0xff. Wrong guess: 1.4 still darkened.
+  Evil body tint; 1.4 sets them to 0xff. Wrong guess: 1.4 still darkened. 2.0 goes back to Purification's 14/0xe, because the 255/0xff values are the suspect for losing Purification's guard (not proven; the tint was the ECF, below).
 * **ECF = the body tint** (1.4 in game: body darker + pulsing). Shader inputs
   (XenoKit VfxColorFade): g_vFadeMulti_PS = multi colour x its transparency,
   w = blending factor; g_vFadeRim_PS = rim x transparency; g_vFadeAdd_PS.
@@ -208,7 +218,11 @@ effect ids) -> `vfx\cmn\BTL_AURA.eepk` effects. Purification = cus/aur aura 14
   (`{AutoID, SetAlias}` on Index works, Install_BPE parses bindings) and
   AuraExtraData (tracked by aur_id). List them:
   `ClaudeTools\refinement\bpe_outlines.py <cmn.bpe.xml>`. Refinement 1.6
-  ships a pink copy of 86 (not seen in game yet).
+  ships a pink copy of 86, confirmed in game.
+* **aur_id means the aur aura drawn, after any remap:** a pre-baked
+  `CusAuraData` can send a CUS aura elsewhere (Revamp: `cus_aura_id="0xe"` ->
+  `aur_aura_id="0x9c4"`, 2500; written in hex, so search for that too). An
+  outline on aur 14 then never shows. Refinement 2.9 lists both ids (untested).
 * Xv2CoreLib's EMA light ChangeHue only recolours at the red channel's key
   times; G/B keys elsewhere keep their colour. Recolour all channels' keys
   yourself (Refinement's `LightToLightPink`).

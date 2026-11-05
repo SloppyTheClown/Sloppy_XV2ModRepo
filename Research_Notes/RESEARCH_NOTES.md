@@ -12,7 +12,9 @@ with a "Covers:" line; don't read the others unless that one points there.
 |---|---|
 | [exe-and-tooling.md](exe-and-tooling.md) | patching/hooking the exe, global singletons, the shared file-request hook, debugging methods, decrypted images, any `tools\` probe script |
 | [xenokit.md](xenokit.md) | Tools\XenoKit local additions: Effect Library (grid, labels, click-to-isolate, which skills/characters use an effect), external back buffer, local build helper |
+| [xenokit-animation-sync.md](xenokit-animation-sync.md) | XenoKit's Sync Animations To Banks: fitting skill animations to other bone structures, leg lengths, which banks vanilla skills use |
 | [xenokit-akeytsu.md](xenokit-akeytsu.md) | XenoKit's Akeytsu menu: .akt export/import, IK, cameras, its state |
+| [xenokit-audio-library.md](xenokit-audio-library.md) | XenoKit's Audio Library: how AcbType + cue id resolve to a file, undocumented AcbType values, its state |
 | [stats-and-combined-supers.md](stats-and-combined-supers.md) | attack stats, HP, level table, PSC body types, buffs, damage, the battle character struct, Combined Supers / Height |
 | [qol-mods.md](qol-mods.md) | General_QoL: features, config keys, tests, what is confirmed |
 | [lobby-quests-and-shops.md](lobby-quests-and-shops.md) | lobby NPCs (TNL/TSD/TSR), NPC ids, quest-list menus + DLC check, QXD requirements, item shop availability, TP medal shop |

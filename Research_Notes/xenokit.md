@@ -8,6 +8,8 @@ are in the other topic files; this one is only about the tool.
 
 Moved to their own files (2026-10-22):
 * `xenokit-akeytsu.md`: Akeytsu export/import (2026-10-21); State (2026-10-22)
+* `xenokit-audio-library.md`: the Audio Library window, how AcbType + cue id resolve (2026-11-03)
+* `xenokit-animation-sync.md`: Sync Animations To Banks, the Animation tab's fit-to-other-bones button (2026-11-05)
 
 ## Where the code is
 * `XenoKit\Engine\Vfx\EffectLibrary\EffectLibraryScene.cs` - the grid scene:
@@ -174,7 +176,28 @@ Moved to their own files (2026-10-22):
 * MSBuild 2022 x64. `MSB4216` / `MSB4028` (`GenerateResource` task host) is an
   environment restriction (e.g. a sandbox blocking the task host), not code.
 
-## State (2026-11-02)
+## State (2026-11-03)
+* Effect preview in the BAC Type 8 and BSA Type 6 values (`Views\EffectPreviewPanel`,
+  `Engine\Viewport.EffectPreview.cs`, `Engine\Rendering\RenderSystem.EffectPreview.cs`).
+  Confirmed working in the editor. It sits in its own column on the right of the
+  view, beside the values; that layout is built, not yet seen. There is one D3D host, so it runs a second
+  `RenderSystem.Draw` after the frame's normal one with its own camera, then copies
+  the result to a 288 px target and reads it back every 2nd frame into a WPF bitmap.
+  The second pass shows only the preview because the normal pass has cleared every
+  other entity's `DrawThisFrame` and `ParticleBatch.Draw` resets its batch. Screen
+  effects are skipped (`IsEffectPreviewPass`). It pauses while the Effect Library
+  or Inspector is up, and stops when the panel is hidden. The particle batch stat
+  (`NumBatch`) reflects the preview pass while one is active. Effects are cloned with
+  `EffectLibraryScene.CreatePreviewEffect`, so CBIND/LIGHT parts are left out (note in the panel).
+* "Open in Effect Library" under the preview: `EffectLibraryWindow.ShowEffect` finds
+  the entry (`EffectLibraryCatalog.FindEntry`: EEPK file name, else type + id, which
+  match the ERS ids), opens its page and isolates the effect like a label click.
+  Confirmed working in the editor.
+* Auto Play is off by default: selecting an action or animation loads it paused.
+  The setting was renamed `XenoKit_AutoPlayOnSelect`, because existing settings files
+  hold the old `XenoKit_AutoPlay` as true. The GameView checkbox still turns it on and
+  also covers cameras. Double-click and "Play Animation" always play. Built, not yet
+  seen in the editor.
 * "Already loaded" crash fixed (see "Gotchas found the hard way"). Built; the
   prompt passes the offline probe, not yet seen in the editor.
 * Camera/animation ID edit fix and older entries below date from 2026-10-23.

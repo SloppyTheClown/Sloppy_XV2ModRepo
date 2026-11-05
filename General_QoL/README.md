@@ -1,6 +1,6 @@
 # General QoL
 
-**Version 1.1.0** · for Dragon Ball Xenoverse 2 **1.27** · needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
+**Version 1.1.1** · for Dragon Ball Xenoverse 2 **1.27** · needs [XV2 Mod Loader](../XV2ModLoader/README.md) 1.1.0 or newer
 
 A mod for XV2 Mod Loader (Dragon Ball Xenoverse 2, game version 1.27).
 Each feature can be switched on or off in `general_qol.json`; some start
@@ -78,13 +78,13 @@ To remove it, delete the `General_QoL` folder.
 | Setting | Default | Meaning |
 |---|---|---|
 | `enabled` | `true` | `false` turns the whole mod off |
-| `unlock_teleports` | `false` | unlock every transfer shop destination |
+| `unlock_teleports` | `true` | unlock every transfer shop destination |
 | `unlock_flight` | `true` | flying in the lobby is always allowed (the save is not changed) |
 | `lobby_flight_speed` | `2.5` | flight speed in the lobby, as a multiple of the normal speed (`1` = normal, 0.1 to 10); battles are not changed |
 | `clear_story_flags` | `false` | the story requirements above: quests, mentors, desks and shop items |
-| `unlock_all_parallel_quests` | `true` | parallel quests do not wait for other parallel quests |
-| `unlock_all_expert_missions` | `true` | expert missions do not wait for other expert missions |
-| `unlock_level_cap` | `true` | maximum level 199 from the start (whole save file) |
+| `unlock_all_parallel_quests` | `false` | parallel quests do not wait for other parallel quests |
+| `unlock_all_expert_missions` | `false` | expert missions do not wait for other expert missions |
+| `unlock_level_cap` | `false` | maximum level 199 from the start (whole save file) |
 | `tp_shop_all_seasons` | `true` | the TP medal shop sells seasonal items all year (known issue: some seasonal items are still missing from the shop) |
 | `mentor_names_on_map` | `true` | the Conton City map shows the names of the mentors you have discovered next to their icons |
 | `free_attribute_points` | `true` | confirmed attribute points can be moved again in the Attributes menu |

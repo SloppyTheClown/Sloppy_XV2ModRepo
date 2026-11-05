@@ -39,10 +39,26 @@ Design:
   locators. Every key is an FK key (joints authoritative, controller follows),
   so the animation is exact; keys carry their RefArray and, for the feet, the
   roll angle from the toe bend.
-* Roll sign (found with MyAkeytsu.Cli `rfkeycheck`): the heel rolling up by
-  +a bends the ball by -a against the foot, so roll = -bend about RollAxisPlant
-  (`RollSign`). A toe curled *down* has no reverse-foot angle -> roll 0; those
-  keys are exact as FK, but dragging the controller there flattens the toe.
+* Handedness (2026-11-03): XenoKit's last viewport pass (`AxisCorrection.hlsl`)
+  samples at 1-u, so its picture is mirrored on X, and XV2 data is left-handed
+  (b_L_* at +X, toes at -Z). Written to .akt as it was, a scene showed mirrored
+  in akeytsu (seen most easily on cameras). `XkScene.Reflect` (Interchange) now
+  maps z -> -z on placement, bone rests, animation frames, meshes (normals too,
+  triangle winding swapped) and camera frames (Position, Target; Roll -> -Roll).
+  AktBridge applies it after loading the .xk on export and at the end of
+  `AktImporter.Run` on import. Offline on HUM GOK_BAS_WALK, export -> import
+  (`ClaudeTools\xkkeys\xk_compare.py`): translation 5.96e-08 m, scale 1.19e-07,
+  camera 1.43e-06, rotation 1.67e-03 (b_L_Leg2 frame 32, same size before the
+  fix, so it is IK solve noise). `ikkeycheck` 74/74. Not yet seen in akeytsu.
+* Old .akt files (exported before Reflect): `WasExportedUnreflected` sees the toes
+  behind the foot in root space, logs "predates" and skips the reflect, so they
+  import as before (checked with an old-build file). A camera-only old .akt has
+  no toes to test, counts as new and would come back mirrored.
+* Roll sign (MyAkeytsu.Cli `rfkeycheck`, HUM GOK_BAS_WALK, after the reflect):
+  `RollSign` -1 solves 62/74 keys with the shoe (roll matches the leg on 61);
+  +1 solves 17/74 (28). Before the reflect it was 29/74 (28), so the mirrored
+  data was also why so few keys solved. Negative roll stays clamped to 0: those
+  keys are exact as FK, but dragging the controller there can change the toe.
 * IK placement fixes after the first GUI export (2026-10-21, the user saw huge
   sideways hand rings and foot controllers above the hips):
   - Hand ring `DecoratorAxis` = the hand's basis row most parallel to the
@@ -276,6 +292,22 @@ it at that offset too); edits to a camera's held lead-in frames are dropped;
 frame rate 60; the cleaned-up keyframe timing is export-only - the import still
 keys every frame of a changed bone, so a keyframe export/import round trip
 comes back baked.
+
+## Position tracks on every bone break other races (2026-11-03)
+
+Keying all bones in akeytsu made the import write a position track on every bone. XenoKit
+retargets position keys to the viewed character, so it looked right there; in game, limbs
+pulled into the body on a non-human race (seen on the reworked Refinement skill, race to be
+confirmed). Vanilla skill animations key position on 9 bones only (`b_C_Base, b_C_Pelvis,
+g_R_Foot, g_L_Foot, g_C_Pelvis, g_R_Hand, g_L_Hand, g_C_Head, g_x_LND`), so limb lengths come
+from the race's own skeleton: MAM `b_L_Arm1` 0.43, the human-proportioned skill EAN 0.21.
+`WriteAnimation` now adds a position track only when the bone already had one or moves more
+than 1 mm from the EAN's rest. Files imported earlier keep their tracks:
+`ClaudeTools\refinement\fix_ean.py` strips them. Fix not yet confirmed in game.
+
+Also: `EAN_AnimationComponent.Clone` dropped I_01, so every save wrote 0 where vanilla has 7
+(camera Scale 3). Fixed. Unproven whether the game reads it: several installed mods ship zeros
+(`ean_flag_survey.py`), all 33 vanilla MET cameras have 7/7/3.
 
 ## State (2026-10-22)
 

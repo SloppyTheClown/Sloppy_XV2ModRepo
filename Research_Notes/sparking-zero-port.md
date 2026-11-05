@@ -15,7 +15,7 @@ paks and rebuilt as XV2 files. State: built, not seen in game (2026-10-20).
   open-source SZ-Audio-Modding-Tool (`utoc_generator.c`) and a `.usmap` from
   TheNaeem's Unreal-Mappings-Archive (without mappings, unversioned
   properties don't parse). Probe: `ClaudeTools\szexport` (.NET 10 console app:
-  list / json / refs / tex / anim / refskel / mesh / loc).
+  list / json / refs / tex / anim / refskel / mesh / loc / raw).
 * Buu = chara 0170. Ultimate clips are `..._0170_00_ult..._ry1_*` AnimSequences
   (one per phase: 0DEM build-up 471 frames, 3HT1 blow-up, 4LP1 hold, 6OT2
   recovery; Ah1P/Bh2P/COT0 are other branches). Sampled per frame with
@@ -37,6 +37,61 @@ paks and rebuilt as XV2 files. State: built, not seen in game (2026-10-20).
 * Head holes = six mesh sockets on BPCHR_0170_00_00's skeletal mesh
   (`socket_Buu_00..05`, on HEAD, offsets in cm + FRotator; steam flies along
   the socket's +X).
+
+### Sound effects
+**Dumping recipe (any character, re-run and matched byte for byte on Buu's 10):**
+1. `szexport raw <regex> <outdir>` saves `BTLSE_<chara>_00.awb` (effect sounds) +
+   `.uasset` (the ACB, with cue names). Voices are separate: `BTLCV_<chara>_00_*.awb`.
+   HCA type 56, encrypted. Buu = 0170.
+2. Key = `13238534807163085345 * ((subkey<<16) | (uint16)(~subkey+2))` mod 2^64
+   (`hcakey_generator.c` in SZ-Audio-Modding-Tool), subkey = the AWB's u16 at 0x0E
+   (61451 for Buu, key 0x40eb19e8a58cbab6). It differs per AWB. `combined_key` in
+   `ClaudeTools\refinement\sz_audio\hca_plain.py`.
+3. Split the AWB into `.hca` files, named `<awb id>_<cue id>_<cue name>`.
+4. Put a `.hcakey` next to the HCAs (the key as 8 big-endian bytes) and run
+   `ClaudeTools\vgmstream\vgmstream-cli.exe -i -o out.wav in.hca`. `-i` = one pass,
+   ignoring the loop; `-m` prints sample rate, channels and loop points.
+
+**Traps:**
+* **Without the `.hcakey`, vgmstream still gives a WAV of the right size, but its
+  samples differ.** Compare against a known-good decode if a dump sounds wrong.
+* **ffmpeg and VGAudio garble these files; use vgmstream only.** The HCAs (v3.0) have
+  min_resolution 0: resolution-0 bands cost no bits and get noise fill (clhca.c
+  `calculate_resolution`, `reconstruct_noise`). ffmpeg's hcadec.c and VGAudio have
+  no min_resolution handling (peak correlation with vgmstream only 0.37-0.80), and
+  agree with each other, which looks like confirmation but isn't. `dump_awb.py`
+  still decodes with ffmpeg: use it for the split + names only.
+* The 0xFFFF frame sync proves nothing: the cipher table maps 0xFF to 0xFF under
+  every key. `test_key.py` checks scale factors instead: 0 bad frames here, wrong
+  keys score many.
+* Output paths: vgmstream wrote nothing to a mixed-slash `%TEMP%` path from Git Bash.
+  Run it from the folder with relative names.
+
+**Buu's sounds** (48 kHz; cue names say what each is for, `SPC` = the steam move):
+
+| Sound | Length | Use |
+|---|---|---|
+| `000_15531 actSPC_2_LOOP` | 6.357 s, mono | HCA loop over the whole file (305152 samples) |
+| `001_15530 actSPC_1_IN` | 2.733 s, mono | |
+| `002_15532 actSPC_3_MAX` | 1.393 s, mono | |
+| `003_12101 actSPM1_SD_2_LD` | 1.017 s | |
+| `004_12120 actSPM1_HD1P_1` | 6.349 s | |
+| `005_12100 actSPM1_SD_1` | 1.437 s | |
+| `006_12102 actSPM1_SD_3_OT` | 2.265 s | |
+| `007_14520 actULT_HD1P_1` | 8.243 s | |
+| `008_14500 actULT_SD_1_32F` | 2.880 s | |
+| `009_14501 actULT_SD_2_205F` | 5.319 s, stereo | |
+
+**Into an XV2 bank:** WAV -> HCA with VGAudio's `ConvertStream.ConvertFile` (encoding
+is fine, only its decoding of these files is wrong), then `ACB_File.AddCue(name, id,
+ReferenceType.Sequence, hca, false, loop, EncodeType.HCA, out cue)`, as XenoKit's Add
+Cue does. The `loop` argument only sets the waveform's LoopFlag: the HCA needs its own
+loop chunk too, `EditLoopOnWaveform(waveform, true, startMs, endMs)`.
+`ReplaceTrackOnCue(cue, hca, false, EncodeType.HCA)` swaps a cue's sound in place. A
+save can renumber AWB ids (memory and streamed sounds share one id space), so compare
+banks per waveform row, not per id.
+* A CUS `ACB_SE` path + CharaSE gives a skill a bank at a fixed name
+  (`sound/SE/Battle/Skill/<path>.acb`), which auto-assigned ids can't change.
 
 ### Rebuilding
 * Retarget (`AngryExplosion_Ultimate\tools\retarget.py`): per mapped bone in
@@ -71,6 +126,13 @@ paks and rebuilt as XV2 files. State: built, not seen in game (2026-10-20).
   `VfxAsset.GetBoneAttachTransform` then re-aims the bone frame's Y at a
   child bone, which turned the head jets front/back and the arm jets 90 deg
   above the shoulder (user, XenoKit, 2026-10-21).
+  Vanilla does the opposite: of bone-attached parts with a non-zero Position in a third of the skill eepks, nearly all have the flag on (277 with AttachmentBone + both updates; off only a handful, mostly on-axis offsets). Big off-axis offsets with it off are uncharted in game.
+  These parts have **Orientation None** (byte +4; the old serializer's XML
+  calls it `RotateOnMovement`). XenoKit's `VfxAsset.GetAdjustedTransform` then
+  keeps only the bone's position, so X/Z above are a world direction and don't
+  follow the bone. For aim that follows the bone use AttachmentBone (2). It
+  would explain Refinement 2.12's tilted arm vents coming out wrong in game
+  (one world direction, both arms); the switch in 2.13 is not yet seen in game.
 * Retarget on Male Majin: Buu's clavicles shrug 40-80 deg (vanilla CaC
   ults 15-30); MAM's Arm1 sits 0.43 m out from b_*_Shoulder (HUM 0.21), so
   the full shrug lifted the arm roots 0.40 m above Neck1 (past the head).

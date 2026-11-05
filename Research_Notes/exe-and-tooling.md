@@ -212,7 +212,7 @@ Game 1.26.01; addresses are DBXV2.exe RVAs.
 * `ClaudeTools\iggy\charasele\edit_charasele.py` - decompiled CharaSele.as ->
   BattleStyles' as3 CharaSele sources (style row + FFDec loss fixes)
 * `ClaudeTools\gamefiles\` - lobby/quest file decoders and the mods' offline file
-  check (README.txt there); `ClaudeTools\ticktest\` - Combined Supers' Tick() offline
+  check (README.txt there); `ClaudeTools\eanbanksynctest\` - XenoKit's animation bank sync (xenokit-animation-sync.md); `ClaudeTools\ticktest\` - Combined Supers' Tick() offline
 * `ClaudeTools\cac_supers_report.py` - reads the save's CaCs (race, body, level,
   STR/BLA, a preset's QQ Bang) and prints vanilla vs Combined Supers stats;
   `--ref SLOT DAMAGE` scales one measured super's damage to the others. Analysis
