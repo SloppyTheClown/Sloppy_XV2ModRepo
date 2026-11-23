@@ -1,4 +1,4 @@
-# Revamp Xenoverse 2 5.1.1 on 1.26.01 (XV2_RevampBridge)
+# Revamp Xenoverse 2 5.1.1 on 1.26.01 (RevampBridge)
 
 Covers: why Revamp's installer fails on 1.26, how the bridge rebuilds its
 Xv2CoreLib fork, the Epatch (exe patch) port table 1.25.02 -> 1.26.01, the
@@ -10,7 +10,7 @@ Revamp targets 1.25.02 / XV2Patcher 4.64. Reference: a 1.25.02 game copy
 (exe + cpks; Steam console `download_depot 454650 454651
 7238901667150908628`).
 `Revamp Xenoverse 2 - 5.1.1\` in this workspace is the untouched download -
-never edit it. `src\` and `tools\` paths below are in `XV2_RevampBridge\`.
+never edit it. `src\` and `tools\` paths below are in `RevampBridge\`.
 
 ## Why its installer fails
 * LB Mod Installer fork (.NET 4.7, Costura-packed). Its embedded Xv2CoreLib
@@ -149,7 +149,7 @@ instruction by instruction):
   patcher + Revamp; the user first saw it right after installing Revamp
   alone. Not a DLL mod: pausing Combined Supers' scan thread live
   (`ClaudeTools\modthread.ps1`) changed nothing, the other mods have no flight
-  code. `XV2_RevampBridge\tools\lbybacdiff.py` (lobby BAC vs cpk, per entry):
+  code. `RevampBridge\tools\lbybacdiff.py` (lobby BAC vs cpk, per entry):
   every Revamp race file (HUM HUF MAF MAM NMC SYF SYM; UNQ only adds 700+)
   differs from vanilla in entries 10/11/12, type 2 (Movement) only -
   Direction Z and Drag Z all x1.4 (faster flight). Entry 11 = boost loop
@@ -190,8 +190,6 @@ instruction by instruction):
   Victory Road (OSQ_TMT_01..25). Partners 30-39: GGK GVG SHN S17 THC TE1 PR1
   PR2 EVG GKS. Roster slots compared by CST costume index looked missing -
   wrong, Revamp renumbers; none missing.
-* Change summary + test checklist: `XV2_RevampBridge\Revamp 5.1.1 - What It
-  Changes.pdf`.
 
 ## State (PC)
 * Installed on the PC 2026-09-30 (defaults: no skin tones, no-glow off). A

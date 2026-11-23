@@ -49,7 +49,7 @@ a patched `AVATAR_LIST.iggy`). How it works:
   `chara/%s_PLAYER.%s` instead of `chara/%s/%s_PLAYER.%s`.
 
 ### Sites, 1.25.02 -> 1.26.01
-Found with `XV2_RevampBridge\tools\codematch.py` (most reference byte
+Found with `RevampBridge\tools\codematch.py` (most reference byte
 patterns no longer match); probe scripts `locate_em.py` / `locate2.py` were
 scratch - re-derive with codematch if needed.
 

@@ -28,7 +28,7 @@ Moved to their own files (2026-10-22):
 * Other UI: QUEST.iggy = quest menu frames only; STORETITLE / CMNTITLE_TTL /
   CMNTITLE_BATTLE are other screens.
 * Preview: stdlib DXT5 decode -> PNG with zlib (no PIL);
-  `XV2_RevampBridge\tools\ddspng.py`.
+  `RevampBridge\tools\ddspng.py`.
 
 ## Formats
 * .iggytex / .iggyted (same format): magic "oggytex\0", u32 count at 8, a
@@ -50,25 +50,25 @@ Moved to their own files (2026-10-22):
 * .iggy: header subfile count u32 at 0x1C, entries {id, size, size, offset}
   from 0x20. It refers to textures by id, so a texture-only mod breaks when
   an update renumbers them.
-* Which numbering an .iggy uses (`XV2_RevampBridge\tools\iggyids.py`): it
+* Which numbering an .iggy uses (`RevampBridge\tools\iggyids.py`): it
   holds a table of named characters, 24-byte records {u64 name offset
   (rising), u64 character id (falling), u64 0}; texture ids are character
   ids. Compare with each version's vanilla .iggy. Never assume a loose .iggy
   is the mod's era - xv2ins 4.7 writes its own (CHARASELE, STAGESELE,
   ITEMLIST_DETAILS, POPUP_PAUSE, 1.26-numbered; embedded in xv2ins.exe with
-  tags XV2_PATCHER_AS3_V16/V14/V05/V09, `XV2_RevampBridge\tools\exeiggy.py` extracts them).
+  tags XV2_PATCHER_AS3_V16/V14/V05/V09, `RevampBridge\tools\exeiggy.py` extracts them).
 * Shared pieces: POPUP_TRAINING / POPUP_PAUSE / POPUP_SKILLSEL import symbols
   by name from MENU/COMMON/swf/CMN_MENU_BATTLE.swf and msg/sysfont01.swf.
 * 1.25 -> 1.26 renumbered: TITLE_<as|eu|jp|us>_<lang> (23 -> 24 textures, new
   id 110, e.g. 53 -> 120), CMN_MENU_BATTLE_<lang> (68, all renumbered; old 45
   redrawn = new 14), sysfont01 (504 -> 505: one shared icon inserted - the
   "race icons off by one"), LOBYHUD, ITEMLIST_DETAILS (24 -> 26), STAGESELE
-  (id 5 redrawn). Maps: `XV2_RevampBridge\src\iggymaps.txt`.
+  (id 5 redrawn). Maps: `RevampBridge\src\iggymaps_<build>.txt`.
 * EMB (ui\texture, ui\sprite): "#EMB", count u32 at 0x0C, entry table at [0x18]
   ({u32 offset relative to the entry, u32 size}), name table at [0x1C]
   (absolute u32 string offsets). HCI rows {chara, costume, state1, state2,
   EmbIndex, ...} u16; EmbIndex indexes ui\texture\<code>.emb (per character).
-  `XV2_RevampBridge\tools\embdiff.py` compares a mod's emb with vanilla by name.
+  `RevampBridge\tools\embdiff.py` compares a mod's emb with vanilla by name.
 
 ## Editing an .iggy's ActionScript (AS3)
 * Movie subfile (id 1) header field +0x98 = self-relative u64 to the AS3
@@ -253,7 +253,7 @@ The offline check is `xv2ui merge <game.iggy> [-base <mod base>] <mod.abc>... [-
   the line record; `'` -> `&apos;` like the game's text. 13 languages.
 * A line record's 4th u32 is its parameter count: with 0 the game shows
   "%ls"/"%d" as is. Keep it when rewriting a file (see revamp-on-1.26.md).
-* Compare msg files with `XV2_RevampBridge\tools\msgdiff.py` (an ASCII token
+* Compare msg files with `RevampBridge\tools\msgdiff.py` (an ASCII token
   check misses them - names are mostly UTF-16).
 * Layout (Xv2CoreLib's MSG_File, checked on all 7315 cpk .msg by
   `xv2ui roundtrip`, byte-identical): "#MSG"; u16@4 = 256 -> UTF-16 names,

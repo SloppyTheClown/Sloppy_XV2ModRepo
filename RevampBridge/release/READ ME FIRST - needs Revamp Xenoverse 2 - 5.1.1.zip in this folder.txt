@@ -1,0 +1,103 @@
+REVAMP BRIDGE - Revamp Xenoverse 2 5.1.1 on game version 1.27
+==============================================================
+
+This is ONLY for Revamp Xenoverse 2 version 5.1.1. It does not work with any
+other Revamp version.
+
+Revamp Xenoverse 2 5.1.1 was made for game version 1.25.02. Its installer
+stops with "IDB version not supported" on newer versions, and parts of it
+(exe patches, menu textures, text) break them. Revamp Bridge runs Revamp's own
+installer so it works on game 1.27 (and 1.26.01) and fixes what the updates
+broke.
+
+
+DISCLAIMER
+----------
+Revamp Bridge is an unofficial converter. It is NOT made, supported or
+endorsed by the Revamp Xenoverse 2 team.
+
+If something goes wrong with Revamp installed through Revamp Bridge, do NOT
+report it to the Revamp team or ask them for help - they made Revamp for
+1.25.02 and are not responsible for it running on newer game versions.
+Report it on Revamp Bridge's own page instead.
+
+
+WHAT YOU NEED
+-------------
+Revamp Bridge does NOT contain Revamp. You need the Revamp download itself:
+
+    Revamp Xenoverse 2 - 5.1.1.zip   (about 4.9 GB)
+
+Put it in THIS folder, next to "Revamp Bridge.exe". Either way works:
+* the zip itself, as downloaded, or
+* the zip extracted here ("Extract Here" or "Extract to Revamp Xenoverse 2 -
+  5.1.1\"). The extracted files are used as they are and nothing in them is
+  changed; this also saves the 5 GB the bridge would otherwise extract.
+
+
+BEFORE YOU START - follow Revamp's own steps first
+--------------------------------------------------
+Revamp's README.txt (inside the zip) asks for these before installing; they
+apply here too:
+
+1. Start from a clean installation. Revamp recommends clearing your mod
+   installation before installing or updating Revamp - Revamp's installer
+   does NOT do this for you. Uninstall your other mods first: X2M mods in
+   XV2 Mod Installer (xv2ins.exe), and mods with their own installer by
+   running that installer again and choosing Uninstall. Mods that change
+   loose files in the game's "data" folder by hand have to be removed by
+   hand. You can reinstall your mods after Revamp.
+2. Run xv2ins.exe (XV2 Mod Installer) at least once. Revamp needs the files
+   it creates.
+3. If the game crashes after finishing a quest: open your save in LazyBone's
+   XV2 Save Editor, then Tools > "Remove Unused IDs", then Tools >
+   "Validate Flags (Experimental)", then save. Revamp suggests doing this
+   before installing or right after.
+
+Also needed for the bridge:
+* Game version 1.27 or 1.26.01 (Steam).
+* XV2Patcher 4.7 installed in the game folder.
+* About 10 GB free disk space: 5 GB on this folder's drive (the Revamp
+  installer is extracted from the zip once; not needed if you extracted it
+  yourself) and room for Revamp in the game folder.
+* Close the game.
+* Keep this folder somewhere you can write to (Desktop, Downloads, C:\Mods),
+  not in Program Files.
+
+
+INSTALL
+-------
+1. Put "Revamp Xenoverse 2 - 5.1.1.zip" (or its extracted contents) in this
+   folder.
+2. Run "Revamp Bridge.exe".
+   It builds its own files from your Revamp download into "Revamp Bridge
+   Files" (a few minutes the first time, with a progress window).
+3. Revamp's own installer opens. Use it as usual: choose your options and
+   install (5-10 minutes).
+4. When the installer closes, a "Revamp Bridge - game update fixes" window
+   lists the fixes that were applied. Click OK.
+5. Start the game.
+
+
+UNINSTALL
+---------
+Run "Revamp Bridge.exe" again and choose Uninstall in Revamp's installer.
+The bridge removes the files it added.
+
+
+IF THE FIXES WINDOW SHOWS AN ERROR
+----------------------------------
+Fix the cause it names, then run "Reapply Fixes Only.bat". That applies the
+fixes again without reinstalling Revamp.
+
+
+GOOD TO KNOW
+------------
+* "Revamp Bridge Files" holds the bridge's files and, when you used the zip,
+  the extracted Revamp installer (5 GB). You may delete it after installing;
+  it is made again when you run Revamp Bridge again (to uninstall, reinstall
+  or reapply the fixes) - keep the Revamp download here for that.
+* "...is not the one from Revamp 5.1.1": your download is a different Revamp
+  version or damaged. The bridge only works with 5.1.1; download it again.
+* Revamp's installer remembers your game folder in
+  %APPDATA%\LB Mod Installer 3\settings.xml, like every LB Mod Installer.

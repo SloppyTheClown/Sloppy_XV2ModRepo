@@ -20,6 +20,9 @@ paks and rebuilt as XV2 files. State: built, not seen in game (2026-10-20).
   (one per phase: 0DEM build-up 471 frames, 3HT1 blow-up, 4LP1 hold, 6OT2
   recovery; Ah1P/Bh2P/COT0 are other branches). Sampled per frame with
   CUE4Parse's anim conversion; SZ runs ~60 fps, so 1 SZ frame = 1 XV2 frame.
+* Prop visibility (weapons etc.) is not in the bone tracks: the prop component is hidden by default and
+  each AnimSequence may carry a float curve (e.g. `AcceA_visiblity_switch`, >= 0.5 = shown) in
+  `CompressedCurveData.FloatCurves` (`szexport json <anim>`). In XV2 key a 0/1 Scale track on the prop bone.
 * The cut camera is a level sequence `LSCAM_0170_00_actULT_SRPSD`: track
   BP_BattleCutCamera2 = camera transform, BP_LookAtTarget2 = look-at point,
   CameraComponent CurrentFocalLength = zoom, all bound under BINDING_ORIGIN

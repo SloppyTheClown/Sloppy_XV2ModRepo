@@ -5,7 +5,7 @@ id is what, the quest-list menus and their DLC check, QXD quest
 requirements, item shop availability, the TP medal shop, the online room
 Ready countdown, and the pitfalls
 hit while editing them (softlock, white screen). Used by General_QoL. Game 1.26.01. Decoders: `ClaudeTools\gamefiles\` (tsrdump, tsd, tnl,
-qsf); `XV2_RevampBridge\tools\lobbyquests.py`.
+qsf); `RevampBridge\tools\lobbyquests.py`.
 
 ## Lobby files
 * `lobby_npc_list.tnl`: NPCs (CMS, costume, lobby name, position, action).

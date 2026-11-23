@@ -27,7 +27,7 @@ with a "Covers:" line; don't read the others unless that one points there.
 | [ui-item-lists.md](ui-item-lists.md) | item lists (Menu::ItemList), Item Search |
 | [ui-menu-screens.md](ui-menu-screens.md) | specific menus: lobby map (LOBYHUD), stat radar chart (CMN_CHART), attributes screen |
 | [boot-and-camera.md](boot-and-camera.md) | logos, intro movie, title, the renderer camera, culling, camera zoom |
-| [revamp-on-1.26.md](revamp-on-1.26.md) | XV2_RevampBridge, porting Epatches between game versions, Revamp content conflicts |
+| [revamp-on-1.26.md](revamp-on-1.26.md) | RevampBridge, porting Epatches between game versions, Revamp content conflicts |
 | [data-files-and-xv2dataedit.md](data-files-and-xv2dataedit.md) | .cpk archives, QXD/CUS/IDB/BDM/BCM layouts, skill/item names, XV2DataEdit |
 | [loader-and-steam-deck.md](loader-and-steam-deck.md) | XV2ModLoader, launchers, Add To Steam, Proton / Steam Deck |
 | [lobby-physics-and-debug-menu.md](lobby-physics-and-debug-menu.md) | the lobby player's Havok (hknp) body, collision filter/layers, noclip, DebugMenu |
@@ -38,6 +38,7 @@ with a "Covers:" line; don't read the others unless that one points there.
 | [sparking-zero-port.md](sparking-zero-port.md) | Sparking! ZERO (UE5) paks via CUE4Parse, retargeting its animations/cameras onto XV2, rebuilding a Niagara effect as EMP, WindIN, x2m skill id placeholders (Angry Explosion) |
 | [new-transformations.md](new-transformations.md) | New Transformations skills: battle HUD stage names ("???"), Hair Change face/hair swap, BCS colour indices vs Revamp, XV2_NewTransformationsBridge |
 | [awoken-skills.md](awoken-skills.md) | awoken skills/transformations: CUS model/skillset swap, skillset presets, after BAC/BCM paths, files-loaded flags, fixed-path files in an x2m (JUNGLE), Purification's parts, XV2_PurificationControlled |
+| [bac-bcm-movesets.md](bac-bcm-movesets.md) | moveset behaviour: BCM root order + DirectionalInput sectors, hold loops (Function 34) and what ends them, HomingMovement 3D chase, held-type survey, BAC Function names, BcmCallback order, ki charge + guard/heavy charge entries |
 | [training-qol.md](training-qol.md) | Training_QoL: per-slot input bindings, human player pads, the pad-reassign/disconnect check, local player override, battle camera follow target + setter, Body Change swap |
 | [costumes-and-models.md](costumes-and-models.md) | costume x2m by script (x2m.xml, BCS part sets, IDB), EMD/EMM/EMB via the XML serializer, character shaders; accessories as physics objects (keep the hair), XV2_ClownNose; local x2m sources/tools, checking an installed x2m |
 | [multi-accessory.md](multi-accessory.md) | wearing up to 3 accessories at once (phase 0: loader/storage traced, cap 4 objects): accessory loading, extra save/equip slots, sending extras online, blockers |

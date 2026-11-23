@@ -153,6 +153,11 @@ turns NULL into ""), empty EMM/EMB default to the EMD name. xv2ins swaps
 * `_DFD` line textures (`ClaudeTools\emb_texture_stats.py` over hum_853/846):
   black RGB, ink in alpha (scouter #3 alpha mean 17, glasses #0 16); MSK
   shaders' line textures are near white instead, so they don't carry over.
+  Character line art (Dabura bust/face_base, 1024 px) is a soft distance
+  field, not binary: line core ~171 (peak 196), 1 px out ~110, then a halo
+  from ~88 at 2 px falling ~1.42/px to 0 at ~64 px; only ~10% of texels are 0.
+  Binary 0/180-255 alpha showed the stage through the lines on a ported model
+  (whether the DF profile fixes that is not yet confirmed in game).
 * Colourable accessory instead of a fixed ramp: no vanilla accessory has
   colour selectors, and a 0x4 object's dyt is the face's, so a picker would
   recolour from the face's lines - not pursued.

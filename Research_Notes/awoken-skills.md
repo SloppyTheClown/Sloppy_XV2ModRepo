@@ -137,38 +137,8 @@ vanilla MAP's CUS fields without MODEL/PARTSET/CHANGE_SKILLSET, U_0E 0x6022
   xml, Skillsets are resolved before the skill lists, so an alias set by a
   skill's AutoSkillID must come from an earlier file entry.
 
-## BAC facts from the Refinement rework (2026-11-03)
-Function types are printed in decimal by the serializer; names are in `Xv2CoreLib\ValuesDictionary\BAC.cs` `BacFunctionNames` (hex): 13 = Activate Transformation, 6 = Invisibility, 35/36 = Spawn/Knock Away Pebbles, 40 = Invisible Opponents. `AuraType` in the same file also has a 6 (HenshinEnd), which is unrelated. Vanilla 004_GOK_MAP pairs Function 13 with Function 6 and Common 612 at the end of its entry.
-
-An effect Off placed past the animation end never runs, so LoopCancel parts keep looping after the transformation: keep Offs before Function 13 and the last frame.
-
-A BCM link entry is only checked inside a BAC BcmCallback window, and `InTransformedState` is evaluated then: for a transformation whose intro chains into a second action through the BCM, Function 13 must come before the callback (entry 0: Function 13 at 274, callback 275). The reverse order silently skips the second action. Found from the data; check the result in NEXT_STEPS.
-
-Skill files with their own id inside: an installer replaces 0xBACA (47818) with the installed id in BAC and BDM `Skill_ID` (LB `InstallSkillFolder` -> `ChangeNeutralSkillId`, also .bsa; xv2ins `ChangeReferencesToSkill`), renames `NNNN_CCC_SSSS` in file names, and copies the rest verbatim. So a skill edited in place needs its id back to 0xBACA before it ships, and the eepk's container names (`<prefix>.ptcl.emb`) need a fixed name, which works in a skill folder.
-
-A skill's `_F.ean` can be regenerated from its male `.ean` with `Tools\EanRaceFit` (Battle Styles' fitter as a standalone tool, `skill` mode). Confirmed in game (female Majin, 2.0).
-
-A BAC Camera event's Duration must cover the whole entry when the next action links at the end: entry 0's camera ran 250 of 276 frames and the gameplay camera came back for the last 26, which XenoKit does not show.
-
-**The ki charge is not in an after BAC (2026-11-04, tested in game):** sounds + steam added to after BAC 68-73 (`BUS_BAS_STUN_*`, BAC.cs "Recover KO") changed nothing on a charge. Charging is a super skill with its own BAC, so a transformation's after BAC never runs for it. `ClaudeTools\refinement\bac_kiaicharge_scan.py` lists every BAC with a KiaiCharge aura event. The charge family:
-* All share one pattern: Ultimate Charge (598 KTU, 2093 KTG), Burst Charge (599 KTB), Indomitable (2321 KFC), Energy Charge (591, 1105), Full Power Charge (592), Maximum Charge (593, 1123, 2343), Final Charge (1573), Pretty Charge (1564). 598/599 use the EAN + SE of 593 (`SPA/593_APL_KTH`, `CAR_BTL_S593_KTH_SE`); 2321 uses the SE only. That EAN has 2 animations, `APL_SPA_KTN_C` (0) and `APL_SPA_KTN_S_C` (1), 140 frames, played in 15-frame looping pieces. Which of 0/1 is ground or air wasn't checked.
-* Events: `Character_VOX` cue 88 @0, `Skill_SE` cue 1 @16 (StopWhenParentEnds), StageBG effects, Functions 35 + 4 (+22 in KFC) every 15 frames from 25, `Aura KiaiCharge` @25. Ending: `Aura KiryokuMax`, `Aura KiaiCharge` + DisableAura; the recovery plays `Character` EAN 0.
-* "Charge" 50 TGK / 54 GTGK is hitboxes and movement, an attack rush, not a ki charge.
-* MAM/MAF (and other CaC player BACs) have charge-shaped entries 484/486 (Common EAN 249/250, same 15-frame loop, KiaiCharge @25) that MAP_PLAYER doesn't. They are the guard + heavy charge, below.
-
-**Guard + heavy charge (2026-11-04, read from the files; a copy in Refinement 2.11 fires and charges in a transformed form without `InTransformedState`, seen in game):** Ultra Instinct's built-in charge is in the CaC files, not in its skill. Each CaC `*_PLAYER.bcm` (seen in MAM, MAF, HUM, HUF, SYM, NMC, FRI) has 4 roots with one child each, in MAM root positions 40-43 of 48:
-* Root: `Heavy, Guard` + ActivatorState `Idle`, or `Heavy` + `Guarding`; HoldDownConditions 0x20000; PrimaryActivatorConditions `Standing|Floating, InTransformedState, Unk11, Idle, KiBelow100`; CUS_AURA 30 (gates it to UI's aura); BAC 484 (ground) / 486 (air); ReceiverLinkID 0x2.
-* Child (the release): same buttons, HoldDownConditions 0x4, `InTransformedState, Unk11, Idle`, BAC 485 / 487, ReceiverLinkID 0x3.
-* BAC 484/486: Common EAN 249/250 in 15-frame looping pieces from 25 to 430, end animation 430-507, then Character EAN 0/1. Function 4's ki ramp equals Ultimate Charge 598's (-1.0 at 25, up to -7.0 at 385-415), so it needs no skill EAN. Common_SE 179@16 is the loop, 180@470 the burst. Females use Common 247/248 (`GKS_SPA_KTM_F`, `_S_F`); that is the only MAM/MAF difference.
-* The "Built-In Ki Charge" mod (Sportiax) installs the same entries for other forms with `InTransformedState` removed and CUS_AURA -1, which shows both gates can go.
-* In an after BAC the ids must not collide: MAP_PLAYER.bac uses 484-486 itself. CaC BACs have empty slots up to DefaultEmptyEndIndex 900, so Refinement uses 640-643. Custom sounds there have to be Character_SE (Skill_SE has no bank in an after BAC entry).
-
-**What can change a charge only while transformed:**
-* The BAC event `Flags` are only Both/CaC/Roster (`ValuesDictionary/BAC.cs`), with no transformation condition. The EAN and SE come from the skill, and a skillset preset replaces slots without looking at what's in them. So no data route was found for animation or sound.
-* The aura's KiaiCharge slot is the one conditional hook in the data: the skill fires the slot of whatever aura is active. Aur 14 holds effect 143, Revamp's aur 2500 holds 153. Editing the slot would affect anything else drawing that aur. Not tried.
-* Otherwise a DLL: at the BAC Animation/Sound event, or entry start 0xf3da0, check `[char+0x22ec]` + the active skill `[char+0x364]`. Animation event handler not found yet.
-
-Sounds in an after BAC must be Common SE or Character SE, not Skill SE; new Character SE cues need merged CSO rows, which an x2m can't do (`xenokit-audio-library.md`). Skill effects need type 12 + the neutral id, so only an after BAC inside the skill folder gets them.
+## BAC facts from the Refinement rework
+Moved to `bac-bcm-movesets.md` (BAC Function numbering, BcmCallback order, the neutral skill id, the ki charge, the guard + heavy charge, after BAC sounds), next to the BCM hold-loop findings.
 
 ## Kid Buu's guard: hard-coded CUS aura 14 (game 1.27, found 2026-11-03)
 **Result:** the transformed guard is not data. `[char+0x22ec]` holds the current CUS aura / trans_control: BAC Function 13 (0xfc860, `cmp cx,0xd` at 0xfd446) passes `[cusEntry+0x3a]` (CUS_Aura, a short) + stage to 0xca320, which writes it at 0xca64a. The getter is 0xc8bb0 (`mov eax,[rcx+0x22ec]; ret`, 104 callers). Nine places compare it with 14, vanilla MAP's CUS_Aura:

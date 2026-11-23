@@ -28,6 +28,7 @@ packages are on the [Releases](../../releases) page.
 | [Item Search](ItemSearch/README.md) | 1.1.0 | 1.27 | A search box over the item lists |
 | [Ki Blast Override](KiBlastOverride/README.md) | 0.1.0 | 1.27 | Choose a created character's charged ki blast, whatever the super soul |
 | [Multi Accessory](MultiAccessory/README.md) | 1.1.0 | 1.27 | Up to two extra accessories per created character |
+| [Revamp Bridge](RevampBridge/README.md) | 1.0.0 | 1.27 | Installs Revamp Xenoverse 2 5.1.1 on today's game (needs the Revamp download) |
 | [SaveSync](SaveSync/README.md) | 1.1.0 | 1.27 | Shares unlock progress between your created characters |
 | [Training QoL](Training_QoL/README.md) | 1.1.0 | 1.27 | In Training, control the partner (D-pad up) or use the photo camera (D-pad down) |
 

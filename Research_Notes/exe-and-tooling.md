@@ -9,12 +9,12 @@ Game 1.26.01; addresses are DBXV2.exe RVAs.
 * `DBXV2.exe` on disk is encrypted by the Steam DRM wrapper (`.bind` section,
   1.26.01: entry point RVA `0x19E5310`, signature `0xC0DEC0DF` at `0x19E5543`; `.text`
   entropy 8.0). Static analysis needs a decrypted image:
-  `XV2_RevampBridge\tools\dumpimage.py` runs the game and saves one (flat
+  `RevampBridge\tools\dumpimage.py` runs the game and saves one (flat
   image, file offset == RVA). An old 1 MB-chunk dump from the first sessions
   is in `ClaudeTools\_claude_xv2mod\dump\` (`cat chunk_*.bin > img.bin`).
 * Static-analysis scripts for an image: `ClaudeTools\exe\` (xref, rawref, da, parent,
   who/RTTI, vt, ptr, imports, exports, strs, vcallnear - see its README.txt; needs
-  capstone and `XV2_RevampBridge\tools\codematch.py`).
+  capstone and `RevampBridge\tools\codematch.py`).
 * Module base was identical across restarts (`0x7FF78E790000`).
 * Steam's DRM decrypts `.text` at startup: code patches must wait for it (the
   mods retry hook install for 60 s). `.rdata` (vtables) can be patched

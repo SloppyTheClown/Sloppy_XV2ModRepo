@@ -13,7 +13,7 @@ Eternity patch file (XV2Patcher Epatch) with:
 usage: make_epatch.py <game version> <out.xml> [decrypted exe image to check against]
        game version: 1.27, 1.26.01 or 1.25.02
 
-The image (offset == RVA, e.g. from XV2_RevampBridge\\tools\\dumpimage.py)
+The image (offset == RVA, e.g. from RevampBridge\\tools\\dumpimage.py)
 is optional: with it the patches are applied the way XV2Patcher does (first
 match from search_start) and the result is checked.
 """
