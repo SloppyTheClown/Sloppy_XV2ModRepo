@@ -1,9 +1,10 @@
 # Builds the release: build\package\Revamp Bridge (...)\ and
 # _Releases\RevampBridge-<VERSION> (Revamp 5.1.1 to XV2 <GAME_VERSION>).zip.
 #
-# The release carries no file of Revamp's: "Revamp Bridge.exe" is the bridge
-# with the patch set of src\make_patches.py embedded, and rebuilds lib\ and
-# epatches\ from the player's Revamp zip (src\Release.cs).
+# The release carries no file of Revamp's: "Revamp Bridge.exe" plus, in
+# "Revamp Bridge Files\", the same exe under the installer's name and the patch
+# set of src\make_patches.py (setup\); it rebuilds lib\ and epatches\ from the
+# player's Revamp zip (src\Release.cs).
 #
 # Needs a finished normal build (build.bat), RevampDir in RevampBridge.ini and
 # Python 3 with bsdiff4.
@@ -44,22 +45,34 @@ Step 'making the patch set'
 & python (Join-Path $PSScriptRoot 'make_patches.py') "$work\exe" "$work\corelib" $installinfo $build "$work\out"
 if ($LASTEXITCODE) { throw 'make_patches.py failed (needs Python 3 with bsdiff4: pip install bsdiff4)' }
 
-Step 'compiling Revamp Bridge.exe with the patch set'
+Step 'compiling Revamp Bridge.exe'
 $game = (Get-Content (Join-Path $Project '..\GAME_VERSION') -TotalCount 1).Trim()
+$version = (Get-Content (Join-Path $Project 'VERSION') -TotalCount 1).Trim()
 $stage = Join-Path $build "package\Revamp Bridge (Revamp 5.1.1 to XV2 $game)"
 if (Test-Path (Split-Path $stage)) { Remove-Item -Recurse -Force (Split-Path $stage) }
 New-Item -ItemType Directory $stage | Out-Null
-$resources = Get-ChildItem -Recurse -File "$work\out" | ForEach-Object {
-    $name = $_.FullName.Substring("$work\out\".Length).Replace('\', '/')
-    "/resource:$($_.FullName),$name"
-}
+# Version numbers for the file properties (the rest is in src\AssemblyInfo.cs).
+$versionCs = Join-Path $work 'Version.cs'
+@"
+[assembly: System.Reflection.AssemblyVersion("$version.0")]
+[assembly: System.Reflection.AssemblyFileVersion("$version.0")]
+[assembly: System.Reflection.AssemblyInformationalVersion("$version (Revamp 5.1.1 to XV2 $game)")]
+"@ | Set-Content -Encoding UTF8 $versionCs
 & "$fw\csc.exe" /nologo /target:winexe /platform:x64 /optimize+ `
     "/r:$fw\WPF\PresentationFramework.dll" "/r:$fw\WPF\PresentationCore.dll" "/r:$fw\WPF\WindowsBase.dll" `
     /r:System.Xaml.dll /r:System.Xml.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll `
-    $resources "/out:$stage\Revamp Bridge.exe" `
-    "$PSScriptRoot\RevampBridge.cs" "$PSScriptRoot\PostInstall.cs" "$PSScriptRoot\Release.cs"
+    "/win32manifest:$PSScriptRoot\app.manifest" "/out:$stage\Revamp Bridge.exe" `
+    "$PSScriptRoot\RevampBridge.cs" "$PSScriptRoot\PostInstall.cs" "$PSScriptRoot\Release.cs" "$PSScriptRoot\AssemblyInfo.cs" $versionCs
 if ($LASTEXITCODE) { throw 'compiling Revamp Bridge.exe failed' }
 Copy-Item (Join-Path $Project 'release\*') $stage
+
+# The patch set ships as plain files and the runner under the installer's
+# name is shipped too, not written at run time (see the top of src\Release.cs).
+Step 'adding the runner and the patch set (Revamp Bridge Files)'
+$bridgeFiles = Join-Path $stage 'Revamp Bridge Files'
+New-Item -ItemType Directory $bridgeFiles | Out-Null
+[IO.File]::WriteAllBytes((Join-Path $bridgeFiles 'Revamp Xenoverse 2 Installer.exe'), [IO.File]::ReadAllBytes("$stage\Revamp Bridge.exe"))
+Copy-Item -Recurse "$work\out" (Join-Path $bridgeFiles 'setup')
 
 Step 'checking that no file of Revamp''s is in the package'
 $revampHashes = @{}
@@ -67,10 +80,11 @@ Get-ChildItem -Recurse -File "$work\exe", "$work\corelib" | ForEach-Object { $re
 $revampHashes[(Get-FileHash $revampExe).Hash] = 'the installer exe'
 foreach ($f in Get-ChildItem -Recurse -File $stage) {
     if ($revampHashes.ContainsKey((Get-FileHash $f.FullName).Hash)) { throw "$($f.Name) is Revamp's $($revampHashes[(Get-FileHash $f.FullName).Hash])" }
-    if ($f.Extension -notin '.exe', '.txt', '.bat') { throw "unexpected file in the package: $($f.Name)" }
+    # Normalised: $Project comes in as "...\RevampBridge\." from build.bat.
+    $inSetup = $f.FullName.StartsWith([IO.Path]::GetFullPath((Join-Path $bridgeFiles 'setup\')), [StringComparison]::OrdinalIgnoreCase)
+    if (-not $inSetup -and $f.Extension -notin '.exe', '.txt', '.bat') { throw "unexpected file in the package: $($f.Name)" }
 }
 
-$version = (Get-Content (Join-Path $Project 'VERSION') -TotalCount 1).Trim()
 $releases = [IO.Path]::GetFullPath((Join-Path $Project '..\..\_Releases'))
 New-Item -ItemType Directory -Force $releases | Out-Null
 # The name says which Revamp it takes and which game it targets (players

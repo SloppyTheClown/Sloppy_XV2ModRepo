@@ -30,8 +30,8 @@ if not exist "%OUT%" mkdir "%OUT%"
 
 "%FW%\csc.exe" /nologo /target:winexe /platform:x64 /optimize+ ^
   /r:"%FW%\WPF\PresentationFramework.dll" /r:"%FW%\WPF\PresentationCore.dll" /r:"%FW%\WPF\WindowsBase.dll" /r:System.Xaml.dll /r:System.Xml.dll ^
-  /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll ^
-  /out:"%OUT%\Revamp Xenoverse 2 Installer.exe" "%SRC%src\RevampBridge.cs" "%SRC%src\PostInstall.cs" "%SRC%src\Release.cs" || (echo. & echo BUILD FAILED & exit /b 1)
+  /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll /win32manifest:"%SRC%src\app.manifest" ^
+  /out:"%OUT%\Revamp Xenoverse 2 Installer.exe" "%SRC%src\RevampBridge.cs" "%SRC%src\PostInstall.cs" "%SRC%src\Release.cs" "%SRC%src\AssemblyInfo.cs" || (echo. & echo BUILD FAILED & exit /b 1)
 copy /y "%INI%" "%OUT%\" >nul || exit /b 1
 if exist "%OUT%\iggymaps.txt" del "%OUT%\iggymaps.txt"
 copy /y "%SRC%src\iggymaps_*.txt" "%OUT%\" >nul || exit /b 1

@@ -1,6 +1,6 @@
 # Revamp Bridge
 
-**Version 1.0.0** · for Dragon Ball Xenoverse 2 **1.27** (also 1.26.01) with XV2Patcher 4.7
+**Version 1.0.1** · for Dragon Ball Xenoverse 2 **1.27** (also 1.26.01) with XV2Patcher 4.7
 
 Installs **Revamp Xenoverse 2 5.1.1** (made for game 1.25.02) on game 1.27.
 Revamp's own installer is run as it is; the bridge makes it work on today's
@@ -87,13 +87,15 @@ slot). It stops with "IDB version not supported" before changing anything.
 ## How the release stays free of Revamp's files
 
 Two parts of the bridge are made from Revamp's files: the installer library
-(`lib\`) and the ported exe patches (`epatches\`). `Revamp Bridge.exe` carries
-binary patches (bsdiff) from Revamp's files to the bridge's instead, and on the
-first run rebuilds them from your download: it extracts the zip's `Installer`
+(`lib\`) and the ported exe patches (`epatches\`). The release carries binary
+patches (bsdiff) from Revamp's files to the bridge's instead
+(`Revamp Bridge Files\setup\`), and on the first run `Revamp Bridge.exe`
+rebuilds them from your download: it extracts the zip's `Installer`
 folder (or uses the one you extracted), takes the libraries embedded in Revamp's installer, applies the
-patches and checks every result by SHA-256. Then it runs a copy of itself
-named `Revamp Xenoverse 2 Installer.exe` (Revamp's installer opens the
-`.installinfo` named after the running program).
+patches and checks every result by SHA-256. Then it runs
+`Revamp Bridge Files\Revamp Xenoverse 2 Installer.exe`, the same program under
+the installer's name (Revamp's installer opens the `.installinfo` named after
+the running program).
 
 ## Known overlaps with newer game content
 

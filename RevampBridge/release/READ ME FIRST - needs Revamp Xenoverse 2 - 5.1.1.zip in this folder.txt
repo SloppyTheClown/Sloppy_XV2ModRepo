@@ -93,10 +93,12 @@ fixes again without reinstalling Revamp.
 
 GOOD TO KNOW
 ------------
-* "Revamp Bridge Files" holds the bridge's files and, when you used the zip,
-  the extracted Revamp installer (5 GB). You may delete it after installing;
-  it is made again when you run Revamp Bridge again (to uninstall, reinstall
-  or reapply the fixes) - keep the Revamp download here for that.
+* "Revamp Bridge Files" holds the bridge's own files - keep it next to
+  "Revamp Bridge.exe". When you used the zip, its "Installer" folder is the
+  extracted Revamp installer (5 GB): you may delete that folder after
+  installing; it is made again when you run Revamp Bridge again (to
+  uninstall, reinstall or reapply the fixes) - keep the Revamp download here
+  for that.
 * "...is not the one from Revamp 5.1.1": your download is a different Revamp
   version or damaged. The bridge only works with 5.1.1; download it again.
 * Revamp's installer remembers your game folder in

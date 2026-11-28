@@ -104,8 +104,8 @@ static class RevampBridge
     static int Main(string[] args)
     {
         // The release exe ("Revamp Bridge.exe") first rebuilds the bridge's
-        // files from the player's Revamp zip, then runs a copy of itself
-        // under the installer's name (src\Release.cs).
+        // files from the player's Revamp zip, then runs the copy of itself
+        // shipped under the installer's name (src\Release.cs).
         if (ReleaseSetup.IsRelease && !string.Equals(System.Diagnostics.Process.GetCurrentProcess().ProcessName,
                                                      InstallerName, StringComparison.OrdinalIgnoreCase))
             return ReleaseSetup.Run(args);

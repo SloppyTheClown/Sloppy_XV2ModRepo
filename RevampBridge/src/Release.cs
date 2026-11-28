@@ -3,19 +3,28 @@
 // The release carries no file of Revamp's. Two parts of the bridge are made
 // from Revamp's own files: lib\ (Revamp's Xv2CoreLib, rebuilt with current
 // file readers, plus the libraries its installer embeds) and epatches\
-// (Revamp's exe patches, ported to each game build). The release exe carries
-// binary patches (bsdiff, made by src\make_patches.py) from Revamp's files to
-// the bridge's, and rebuilds them here from the player's own download:
+// (Revamp's exe patches, ported to each game build). The release ships binary
+// patches (bsdiff, made by src\make_patches.py) from Revamp's files to the
+// bridge's as plain files in "Revamp Bridge Files\setup\", and rebuilds them
+// here from the player's own download:
 //
 //   1. find the Revamp download next to this exe: that zip already extracted
 //      (its Installer folder, used as it is), else "Revamp Xenoverse 2 -
 //      5.1.1.zip", whose Installer folder is extracted into
 //      "Revamp Bridge Files\Installer" (once; about 5 GB)
 //   2. rebuild lib\, epatches\ and the texture maps in "Revamp Bridge Files"
-//      as patches\manifest.txt lists them; every result is checked by SHA-256
-//   3. copy this exe there as "Revamp Xenoverse 2 Installer.exe" (the
-//      installer opens "<process name>.installinfo", so the process needs that
-//      name) and run it - from then on it is the bridge's normal mode.
+//      as setup\patches\manifest.txt lists them; every result is checked by SHA-256
+//   3. run "Revamp Bridge Files\Revamp Xenoverse 2 Installer.exe" (the same
+//      exe as this one, shipped under that name because the installer opens
+//      "<process name>.installinfo") - from then on it is the bridge's normal mode.
+//
+// Release layout (src\make_release.ps1). The patches are kept out of the exe
+// and the runner is shipped rather than copied at run time: an exe that
+// carries compressed blobs and writes a renamed copy of itself is what
+// antivirus heuristics take for a dropper.
+//   Revamp Bridge.exe
+//   Revamp Bridge Files\Revamp Xenoverse 2 Installer.exe   (same bytes)
+//   Revamp Bridge Files\setup\patches\manifest.txt, *.rbpatch; setup\files\*
 //
 //   "Revamp Bridge.exe" [--fix-only] [--game <game folder>]
 //   "Revamp Bridge.exe" --prepare-only [--zip <Revamp zip>]   (steps 1-2 only, no window; for tests)
@@ -37,13 +46,22 @@ static class ReleaseSetup
     public const string ZipName = "Revamp Xenoverse 2 - 5.1.1.zip";
     const string ExtractedName = "Revamp Xenoverse 2 - 5.1.1";   // the zip's own name, if the player extracted it
     const string WorkName = "Revamp Bridge Files";
+    const string SetupName = "setup";                     // in WorkName: the patch set
     const string ManifestResource = "patches/manifest.txt";
 
-    // Only the release build embeds the patch set.
+    // Only the release has the patch set: in WorkName next to "Revamp
+    // Bridge.exe", or next to the runner, which lives in WorkName itself.
     public static bool IsRelease
     {
-        get { return Assembly.GetExecutingAssembly().GetManifestResourceInfo(ManifestResource) != null; }
+        get
+        {
+            string here = AppDomain.CurrentDomain.BaseDirectory;
+            return File.Exists(Path.Combine(here, WorkName, SetupName, ManifestResource)) ||
+                   File.Exists(Path.Combine(here, SetupName, ManifestResource));
+        }
     }
+
+    static string setupDir;   // WorkName\setup, set by Run
 
     public static int Run(string[] args)
     {
@@ -59,6 +77,7 @@ static class ReleaseSetup
         }
 
         string work = Path.Combine(here, WorkName);
+        setupDir = Path.Combine(work, SetupName);
         // An extracted Revamp download wins over the zip: no 5 GB extraction.
         string extracted = zip == null ? FindExtracted(here) : null;
         if (zip == null && extracted == null) zip = FindZip(here);
@@ -87,10 +106,13 @@ static class ReleaseSetup
         if (!PrepareWithWindow(zip, installerDir, work)) return 1;
 
         // Run the bridge under the installer's name (see the top of this file).
-        string self = Assembly.GetExecutingAssembly().Location;
         string runner = Path.Combine(work, RevampBridge.InstallerName + ".exe");
-        if (!File.Exists(runner) || !File.ReadAllBytes(runner).SequenceEqual(File.ReadAllBytes(self)))
-            File.Copy(self, runner, true);
+        if (!File.Exists(runner))
+        {
+            RevampBridge.Fail("\"" + WorkName + "\\" + RevampBridge.InstallerName + ".exe\" is missing.\n\n" +
+                              "Extract the whole Revamp Bridge zip again (keep its \"" + WorkName + "\" folder).");
+            return 1;
+        }
 
         var cmd = new StringBuilder("--revamp " + Quote(installerDir));
         foreach (string a in passOn) cmd.Append(' ').Append(Quote(a));
@@ -383,11 +405,14 @@ static class ReleaseSetup
 
     static string ReadResourceText(string name) { return Encoding.UTF8.GetString(ReadResource(name)); }
 
+    // A file of the patch set ("patches/x.rbpatch", "files/y") in WorkName\setup.
     static byte[] ReadResource(string name)
     {
-        Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream(name);
-        if (s == null) throw new InvalidDataException("This Revamp Bridge.exe lacks its resource " + name + " - download it again.");
-        using (s) return ReadAll(s, s.Length);
+        string path = Path.Combine(setupDir, name.Replace('/', '\\'));
+        if (!File.Exists(path))
+            throw new InvalidDataException(WorkName + "\\" + SetupName + "\\" + name.Replace('/', '\\') +
+                                           " is missing - extract the whole Revamp Bridge zip again.");
+        return File.ReadAllBytes(path);
     }
 
     static byte[] ReadAll(Stream s, long length)
